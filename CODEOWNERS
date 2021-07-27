@@ -382,6 +382,7 @@ homeassistant/components/pi_hole/* @fabaff @johnluetke @shenxn
 homeassistant/components/picnic/* @corneyl
 homeassistant/components/pilight/* @trekky12
 homeassistant/components/plaato/* @JohNan
+homeassistant/components/plejd/* @klali @bnordli
 homeassistant/components/plex/* @jjlawren
 homeassistant/components/plugwise/* @CoMPaTech @bouwew @brefra
 homeassistant/components/plum_lightpad/* @ColinHarrington @prystupa

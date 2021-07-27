@@ -475,11 +475,17 @@ construct==2.10.56
 # homeassistant.components.coronavirus
 coronavirus==1.1.1
 
+# homeassistant.components.plejd
+cryptography==3.4.7
+
 # homeassistant.components.datadog
 datadog==0.15.0
 
 # homeassistant.components.metoffice
 datapoint==0.9.8
+
+# homeassistant.components.plejd
+dbus-next==0.2.2
 
 # homeassistant.components.debugpy
 debugpy==1.4.0
