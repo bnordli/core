@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """The Plejd light platform."""
+
 import asyncio
 import binascii
 from datetime import datetime, timedelta
@@ -19,7 +20,7 @@ import logging
 import os
 import re
 import struct
-from typing import Any, Dict
+from typing import Dict
 
 import voluptuous as vol
 
@@ -38,22 +39,36 @@ from homeassistant.const import (
 from homeassistant.core import callback
 from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.helpers.restore_state import RestoreEntity
 import homeassistant.util.dt as dt_util
 
-CONF_CRYPTO_KEY = "crypto_key"
-CONF_DISCOVERY_TIMEOUT = "discovery_timeout"
-CONF_DBUS_ADDRESS = "dbus_address"
-CONF_OFFSET_MINUTES = "offset_minutes"
+from .const import (
+    BLUEZ_ADAPTER_IFACE,
+    BLUEZ_DEVICE_IFACE,
+    BLUEZ_SERVICE_NAME,
+    CONF_CRYPTO_KEY,
+    CONF_DBUS_ADDRESS,
+    CONF_DISCOVERY_TIMEOUT,
+    CONF_OFFSET_MINUTES,
+    DATA_PLEJD,
+    DBUS_OM_IFACE,
+    DBUS_PROP_IFACE,
+    DEFAULT_DBUS_PATH,
+    DEFAULT_DISCOVERY_TIMEOUT,
+    GATT_CHRC_IFACE,
+    GATT_SERVICE_IFACE,
+    PLEJD_AUTH_UUID,
+    PLEJD_DATA_UUID,
+    PLEJD_LAST_DATA_UUID,
+    PLEJD_LIGHTLEVEL_UUID,
+    PLEJD_PING_UUID,
+    PLEJD_SVC_UUID,
+    TIME_DELTA_SYNC,
+)
 
-DEFAULT_DISCOVERY_TIMEOUT = 2
-DEFAULT_DBUS_PATH = "unix:path=/run/dbus/system_bus_socket"
-TIME_DELTA_SYNC = 60  # if delta is more than a minute, sync time
-
-DATA_PLEJD = "plejdObject"
-
-PLEJD_DEVICES: Dict[bytes, Any] = {}
+PLEJD_DEVICES: Dict[bytes, Entity] = {}
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,23 +85,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_OFFSET_MINUTES, default=0): int,
     }
 )
-
-
-BLUEZ_SERVICE_NAME = "org.bluez"
-DBUS_OM_IFACE = "org.freedesktop.DBus.ObjectManager"
-DBUS_PROP_IFACE = "org.freedesktop.DBus.Properties"
-
-BLUEZ_ADAPTER_IFACE = "org.bluez.Adapter1"
-BLUEZ_DEVICE_IFACE = "org.bluez.Device1"
-GATT_SERVICE_IFACE = "org.bluez.GattService1"
-GATT_CHRC_IFACE = "org.bluez.GattCharacteristic1"
-
-PLEJD_SVC_UUID = "31ba0001-6085-4726-be45-040c957391b5"
-PLEJD_LIGHTLEVEL_UUID = "31ba0003-6085-4726-be45-040c957391b5"
-PLEJD_DATA_UUID = "31ba0004-6085-4726-be45-040c957391b5"
-PLEJD_LAST_DATA_UUID = "31ba0005-6085-4726-be45-040c957391b5"
-PLEJD_AUTH_UUID = "31ba0009-6085-4726-be45-040c957391b5"
-PLEJD_PING_UUID = "31ba000a-6085-4726-be45-040c957391b5"
 
 
 class PlejdLight(LightEntity, RestoreEntity):
