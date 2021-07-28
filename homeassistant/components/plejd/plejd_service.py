@@ -205,7 +205,8 @@ class PlejdService:
         self.pi = hass.data[DOMAIN]
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._stop_plejd)
 
-    async def _connect(self):
+    async def connect(self):
+        """Connect to the Plejd service."""
         pi = self.pi
         pi["characteristics"] = None
         bus = PlejdBus(pi["dbus_address"])
@@ -322,12 +323,13 @@ class PlejdService:
 
         return True
 
-    async def _ping(self, now):
+    async def ping(self, now):
+        """Send a ping and then schedule another in the future."""
         pi = self.pi
         if not await self._send_ping():
-            await self._connect()
+            await self.connect()
         pi["remove_timer"] = async_track_point_in_utc_time(
-            self.hass, self._ping, dt_util.utcnow() + timedelta(seconds=300)
+            self.hass, self.ping, dt_util.utcnow() + timedelta(seconds=300)
         )
 
     async def _stop_plejd(self, event):
@@ -387,7 +389,8 @@ class PlejdService:
             data = _plejd_enc_dec(pi["key"], pi["address"], payload)
             await pi["characteristics"]["data"].call_write_value(data, {})
 
-    async def _request_update(self):
+    async def request_update(self):
+        """Request an update of all devices."""
         pi = self.pi
         await pi["characteristics"]["lightlevel"].call_write_value(b"\x01", {})
 

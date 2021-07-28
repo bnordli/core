@@ -172,10 +172,10 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     hass.data[DOMAIN] = plejdinfo
     service = PlejdService(hass)
 
-    if not await service._connect():
+    if not await service.connect():
         raise PlatformNotReady
 
-    await service._ping(dt_util.utcnow())
+    await service.ping(dt_util.utcnow())
     for identity, entity_info in config[CONF_DEVICES].items():
         i = int(identity)
         _LOGGER.debug(f"Adding device {i} ({entity_info[CONF_NAME]})")
@@ -183,5 +183,5 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
 
     async_add_entities(plejdinfo["devices"].values())
 
-    await service._request_update()
+    await service.request_update()
     _LOGGER.debug("All plejd setup completed")
