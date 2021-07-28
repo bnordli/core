@@ -166,17 +166,15 @@ class PlejdService:
                 device.update_state(bool(m[1]), int.from_bytes(m[5:7], "little"))
 
         await adapter.call_stop_discovery()
-
-        pi["characteristics"]["last_data_prop"].on_properties_changed(
-            handle_notification_cb
-        )
-        await pi["characteristics"]["last_data"].call_start_notify()
-        pi["characteristics"]["lightlevel_prop"].on_properties_changed(
-            handle_lightlevel_cb
-        )
-        await pi["characteristics"]["lightlevel"].call_start_notify()
+        await self._add_callback("last_data", handle_notification_cb)
+        await self._add_callback("lightlevel", handle_lightlevel_cb)
 
         return True
+
+    async def _add_callback(self, method, callback):
+        pi = self.pi
+        pi["characteristics"][method + "prop"].on_properties_changed(callback)
+        await pi["characteristics"][method].call_start_notify()
 
     async def _ping(self, now):
         pi = self.pi
