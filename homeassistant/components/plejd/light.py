@@ -355,7 +355,6 @@ async def _connect(pi):
         _LOGGER.error("No bluetooth adapter localized")
         return
     await _disconnect_devices(bus, om_objects, adapter)
-    await asyncio.sleep(pi["discovery_timeout"])
 
     plejds = await _get_plejds(bus, om, pi, adapter)
     _LOGGER.debug("Found %d plejd devices" % (len(plejds)))
@@ -363,6 +362,7 @@ async def _connect(pi):
         _LOGGER.warning("No plejd devices found")
         return
 
+    await asyncio.sleep(pi["discovery_timeout"])
     plejd_service = await _get_plejd_service(bus, om)
     if not plejd_service:
         _LOGGER.warning("Failed connecting to plejd service")
