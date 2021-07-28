@@ -154,11 +154,10 @@ class PlejdLight(LightEntity, RestoreEntity):
         self._brightness = brightness
         if brightness:
             _LOGGER.debug(
-                "%s(%02x) turned %r with brightness %04x"
-                % (self._name, self._id, state, brightness)
+                f"{self._name} ({self._id}) turned {state!r} with brightness {brightness:04x}"
             )
         else:
-            _LOGGER.debug(f"{self._name}({self._id:02x}) turned {state!r}")
+            _LOGGER.debug(f"{self._name} ({self._id}) turned {state!r}")
         self.async_schedule_update_ha_state()
 
     async def async_turn_on(self, **kwargs):
@@ -171,7 +170,7 @@ class PlejdLight(LightEntity, RestoreEntity):
         brightness = kwargs.get(ATTR_BRIGHTNESS)
         if brightness is None:
             self._brightness = None
-            payload = binascii.a2b_hex("%02x0110009701" % (self._id))
+            payload = binascii.a2b_hex(f"{self._id:02x}0110009701")
         else:
             # since ha brightness is just one byte we shift it up and or it in to be able to get max val
             self._brightness = brightness << 8 | brightness
@@ -180,8 +179,7 @@ class PlejdLight(LightEntity, RestoreEntity):
             )
 
         _LOGGER.debug(
-            "Turning on %s(%02x) with brightness %02x"
-            % (self._name, self._id, brightness or 0)
+            f"Turning on {self._name} ({self._id}) with brightness {brightness or 0:02x}"
         )
         await _plejd_write(pi, payload)
 
@@ -192,8 +190,8 @@ class PlejdLight(LightEntity, RestoreEntity):
             _LOGGER.warning("Tried to turn off light when plejd is not connected")
             return
 
-        payload = binascii.a2b_hex("%02x0110009700" % (self._id))
-        _LOGGER.debug(f"Turning off {self._name} ({self._id:02x})")
+        payload = binascii.a2b_hex(f"{self._id:02x}0110009700")
+        _LOGGER.debug(f"Turning off {self._name} ({self._id})")
         await _plejd_write(pi, payload)
 
 
@@ -220,7 +218,7 @@ class PlejdService:
         await _disconnect_devices(bus, om_objects, adapter)
 
         plejds = await _get_plejds(bus, om, pi, adapter)
-        _LOGGER.debug("Found %d plejd devices" % (len(plejds)))
+        _LOGGER.debug(f"Found {len(plejds)} plejd devices")
         if len(plejds) == 0:
             _LOGGER.warning("No plejd devices found")
             return
@@ -255,11 +253,11 @@ class PlejdService:
                 time = datetime.fromtimestamp(struct.unpack_from("<I", dec, 5)[0])
                 n = n + timedelta(minutes=pi["offset_minutes"])
                 delta = abs(time - n)
-                _LOGGER.debug("Plejd network reports time as '%s'", time)
+                _LOGGER.debug(f"Plejd network reports time as '{time}'")
                 s = delta.total_seconds()
                 if s > TIME_DELTA_SYNC:
                     _LOGGER.info(
-                        "Plejd time delta is %d seconds, setting time to '%s'.", s, n
+                        f"Plejd time delta is {s} seconds, setting time to '{n}'."
                     )
                     ntime = b"\x00\x01\x10\x00\x1b"
                     ntime += struct.pack("<I", int(n.timestamp())) + b"\x00"
@@ -300,9 +298,9 @@ class PlejdService:
 
             value = value.value
             if len(value) != 20 and len(value) != 10:
+                lightlevel = binascii.b2a_hex(value)
                 _LOGGER.debug(
-                    "Unknown length data received for lightlevel: '%s'"
-                    % (binascii.b2a_hex(value))
+                    f"Unknown length data received for lightlevel: '{lightlevel}'"
                 )
                 return
 
@@ -360,7 +358,7 @@ async def _get_bus(address):
 async def _get_adapter(bus, om_objects):
     for path, interfaces in om_objects.items():
         if BLUEZ_ADAPTER_IFACE in interfaces.keys():
-            _LOGGER.debug("Discovered bluetooth adapter %s" % (path))
+            _LOGGER.debug(f"Discovered bluetooth adapter {path}")
             adapter_introspection = await bus.introspect(BLUEZ_SERVICE_NAME, path)
             return bus.get_proxy_object(
                 BLUEZ_SERVICE_NAME, path, adapter_introspection
@@ -376,9 +374,9 @@ async def _disconnect_devices(bus, om_objects, adapter):
             ).get_interface(BLUEZ_DEVICE_IFACE)
             connected = await dev.get_connected()
             if connected:
-                _LOGGER.debug("Disconnecting %s" % (path))
+                _LOGGER.debug(f"Disconnecting {path}")
                 await dev.call_disconnect()
-                _LOGGER.debug("Disconnected %s" % (path))
+                _LOGGER.debug(f"Disconnected {path}")
             await adapter.call_remove_device(path)
 
 
@@ -413,19 +411,17 @@ async def _get_plejds(bus, om, pi, adapter):
         ).get_interface(BLUEZ_DEVICE_IFACE)
         plejd["RSSI"] = await dev.get_rssi()
         plejd["obj"] = dev
-        _LOGGER.debug(
-            "Discovered plejd %s with RSSI %d" % (plejd["path"], plejd["RSSI"])
-        )
+        _LOGGER.debug(f"Discovered plejd {plejd['path']} with RSSI {plejd['RSSI']}")
 
     plejds.sort(key=lambda a: a["RSSI"], reverse=True)
     for plejd in plejds:
         try:
-            _LOGGER.debug("Connecting to %s" % (plejd["path"]))
+            _LOGGER.debug(f"Connecting to {plejd['path']}")
             await plejd["obj"].call_connect()
-            _LOGGER.debug("Connected to %s" % (plejd["path"]))
+            _LOGGER.debug(f"Connected to {plejd['path']}")
             break
         except DBusError as e:
-            _LOGGER.warning("Error connecting to plejd: %s" % (str(e)))
+            _LOGGER.warning(f"Error connecting to plejd: {e}")
 
     return plejds
 
@@ -534,13 +530,13 @@ async def _plejd_ping(pi):
         await char.call_write_value(ping, {})
         pong = await char.call_read_value({})
     except DBusError as e:
-        _LOGGER.warning("Plejd ping errored: %s" % (str(e)))
+        _LOGGER.warning(f"Plejd ping errored: {e}")
         return False
     if (ping[0] + 1) & 0xFF != pong[0]:
         _LOGGER.warning(f"Plejd ping failed {ping[0]:02x} - {pong[0]:02x}")
         return False
 
-    _LOGGER.debug("Successfully pinged with %02x" % (ping[0]))
+    _LOGGER.debug(f"Successfully pinged with {ping[0]:02x}")
     return True
 
 
@@ -553,7 +549,7 @@ async def _plejd_auth(key, char):
         r = _plejd_chalresp(key, chal)
         await char.call_write_value(r, {})
     except DBusError as e:
-        _LOGGER.warning("Plejd authentication errored: %s" % (str(e)))
+        _LOGGER.warning(f"Plejd authentication errored: {e}")
         return False
     return True
 
@@ -565,7 +561,7 @@ async def _plejd_write(pi, payload):
         data = _plejd_enc_dec(pi["key"], pi["address"], payload)
         await pi["characteristics"]["data"].call_write_value(data, {})
     except DBusError as e:
-        _LOGGER.warning("Write failed: '%s'" % (e))
+        _LOGGER.warning(f"Write failed: '{e}'")
         await PLEJD_SERVICE._connect()
         data = _plejd_enc_dec(pi["key"], pi["address"], payload)
         await pi["characteristics"]["data"].call_write_value(data, {})
@@ -596,7 +592,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     await PLEJD_SERVICE._ping(dt_util.utcnow())
     for identity, entity_info in config[CONF_DEVICES].items():
         i = int(identity)
-        _LOGGER.debug("Adding device %d (%s)" % (i, entity_info[CONF_NAME]))
+        _LOGGER.debug(f"Adding device {i} ({entity_info[CONF_NAME]})")
         PLEJD_DEVICES[i] = PlejdLight(entity_info[CONF_NAME], i)
 
     async_add_entities(PLEJD_DEVICES.values())
