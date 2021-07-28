@@ -15,7 +15,6 @@
 
 import binascii
 import logging
-from typing import Dict
 
 import voluptuous as vol
 
@@ -167,6 +166,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         "offset_minutes": config.get(CONF_OFFSET_MINUTES),
         "discovery_timeout": config[CONF_DISCOVERY_TIMEOUT],
         "dbus_address": config[CONF_DBUS_ADDRESS],
+        "devices": {},
     }
 
     hass.data[DOMAIN] = plejdinfo
@@ -180,12 +180,9 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     for identity, entity_info in config[CONF_DEVICES].items():
         i = int(identity)
         _LOGGER.debug(f"Adding device {i} ({entity_info[CONF_NAME]})")
-        PLEJD_DEVICES[i] = PlejdLight(entity_info[CONF_NAME], i, service)
+        plejdinfo["devices"][i] = PlejdLight(entity_info[CONF_NAME], i, service)
 
-    async_add_entities(PLEJD_DEVICES.values())
+    async_add_entities(plejdinfo["devices"].values())
 
     await service._request_update()
     _LOGGER.debug("All plejd setup completed")
-
-
-PLEJD_DEVICES: Dict[bytes, PlejdLight] = {}

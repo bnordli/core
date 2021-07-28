@@ -43,7 +43,6 @@ from .const import (
     PLEJD_SVC_UUID,
     TIME_DELTA_SYNC,
 )
-from .light import PLEJD_DEVICES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -98,8 +97,8 @@ class PlejdService:
 
             dec = _plejd_enc_dec(pi["key"], pi["address"], value.value)
             # check if this is a device we care about
-            if dec[0] in PLEJD_DEVICES:
-                device = PLEJD_DEVICES[dec[0]]
+            if dec[0] in pi["devices"]:
+                device = pi["devices"][dec[0]]
             elif dec[0] == 0x01 and dec[3:5] == b"\x00\x1b":
                 n = dt_util.now().replace(tzinfo=None)
                 time = datetime.fromtimestamp(struct.unpack_from("<I", dec, 5)[0])
@@ -161,9 +160,9 @@ class PlejdService:
                 msgs.append(value[10:20])
 
             for m in msgs:
-                if m[0] not in PLEJD_DEVICES:
+                if m[0] not in pi["devices"]:
                     continue
-                device = PLEJD_DEVICES[m[0]]
+                device = pi["devices"][m[0]]
                 device.update_state(bool(m[1]), int.from_bytes(m[5:7], "little"))
 
         await adapter.call_stop_discovery()
