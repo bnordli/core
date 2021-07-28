@@ -52,11 +52,11 @@ from .const import (
     CONF_DBUS_ADDRESS,
     CONF_DISCOVERY_TIMEOUT,
     CONF_OFFSET_MINUTES,
-    DATA_PLEJD,
     DBUS_OM_IFACE,
     DBUS_PROP_IFACE,
     DEFAULT_DBUS_PATH,
     DEFAULT_DISCOVERY_TIMEOUT,
+    DOMAIN,
     GATT_CHRC_IFACE,
     GATT_SERVICE_IFACE,
     PLEJD_AUTH_UUID,
@@ -162,7 +162,7 @@ class PlejdLight(LightEntity, RestoreEntity):
 
     async def async_turn_on(self, **kwargs):
         """Turn the light on."""
-        pi = self.hass.data[DATA_PLEJD]
+        pi = self.hass.data[DOMAIN]
         if "characteristics" not in pi:
             _LOGGER.warning("Tried to turn on light when plejd is not connected")
             return
@@ -186,7 +186,7 @@ class PlejdLight(LightEntity, RestoreEntity):
 
     async def async_turn_off(self, **kwargs):
         """Turn the light off."""
-        pi = self.hass.data[DATA_PLEJD]
+        pi = self.hass.data[DOMAIN]
         if "characteristics" not in pi:
             _LOGGER.warning("Tried to turn off light when plejd is not connected")
             return
@@ -243,9 +243,11 @@ async def _get_plejds(bus, om, pi, adapter):
 
     @callback
     def on_interfaces_added(path, interfaces):
-        if BLUEZ_DEVICE_IFACE in interfaces:
-            if PLEJD_SVC_UUID in interfaces[BLUEZ_DEVICE_IFACE]["UUIDs"].value:
-                plejds.append({"path": path})
+        if (
+            BLUEZ_DEVICE_IFACE in interfaces
+            and PLEJD_SVC_UUID in interfaces[BLUEZ_DEVICE_IFACE]["UUIDs"].value
+        ):
+            plejds.append({"path": path})
 
     om.on_interfaces_added(on_interfaces_added)
 
@@ -286,9 +288,8 @@ async def _get_plejd_service(bus, om):
     chrcs = []
 
     for path, interfaces in objects.items():
-        if GATT_CHRC_IFACE not in interfaces.keys():
-            continue
-        chrcs.append(path)
+        if GATT_CHRC_IFACE in interfaces.keys():
+            chrcs.append(path)
 
     async def process_plejd_service(service_path, chrc_paths, bus):
         service_introspection = await bus.introspect(BLUEZ_SERVICE_NAME, service_path)
@@ -555,12 +556,14 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         "key": cryptokey,
         "hass": hass,
         "offset_minutes": config.get(CONF_OFFSET_MINUTES),
+        "discovery_timeout": config[CONF_DISCOVERY_TIMEOUT],
+        "dbus_address": config[CONF_DBUS_ADDRESS],
     }
 
-    hass.data[DATA_PLEJD] = plejdinfo
+    hass.data[DOMAIN] = plejdinfo
 
     async def _ping(now):
-        pi = hass.data[DATA_PLEJD]
+        pi = hass.data[DOMAIN]
         if not await _plejd_ping(pi):
             await _connect(pi)
         plejdinfo["remove_timer"] = async_track_point_in_utc_time(
@@ -573,24 +576,17 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
 
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _stop_plejd)
 
-    plejdinfo["discovery_timeout"] = config[CONF_DISCOVERY_TIMEOUT]
-    plejdinfo["dbus_address"] = config[CONF_DBUS_ADDRESS]
-
     await _connect(plejdinfo)
-    if plejdinfo["characteristics"] is not None:
-        await _ping(dt_util.utcnow())
-    else:
+    if plejdinfo["characteristics"] is None:
         raise PlatformNotReady
 
-    devices = []
+    await _ping(dt_util.utcnow())
     for identity, entity_info in config[CONF_DEVICES].items():
         i = int(identity)
         _LOGGER.debug("Adding device %d (%s)" % (i, entity_info[CONF_NAME]))
-        new = PlejdLight(entity_info[CONF_NAME], i)
-        PLEJD_DEVICES[i] = new
-        devices.append(new)
+        PLEJD_DEVICES[i] = PlejdLight(entity_info[CONF_NAME], i)
 
-    async_add_entities(devices)
+    async_add_entities(PLEJD_DEVICES.values())
 
     await _plejd_update(plejdinfo)
     _LOGGER.debug("All plejd setup completed")

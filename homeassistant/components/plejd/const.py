@@ -11,8 +11,6 @@ DEFAULT_DISCOVERY_TIMEOUT = 2
 DEFAULT_DBUS_PATH = "unix:path=/run/dbus/system_bus_socket"
 TIME_DELTA_SYNC = 60  # if delta is more than a minute, sync time
 
-DATA_PLEJD = "plejdObject"
-
 BLUEZ_SERVICE_NAME = "org.bluez"
 DBUS_OM_IFACE = "org.freedesktop.DBus.ObjectManager"
 DBUS_PROP_IFACE = "org.freedesktop.DBus.Properties"
