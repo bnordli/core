@@ -17,7 +17,6 @@ import binascii
 import logging
 from typing import Dict
 
-from plejd_service import PlejdService
 import voluptuous as vol
 
 from homeassistant.components.light import (
@@ -42,6 +41,7 @@ from .const import (
     DEFAULT_DISCOVERY_TIMEOUT,
     DOMAIN,
 )
+from .plejd_service import PlejdService
 
 _LOGGER = logging.getLogger(__name__)
 

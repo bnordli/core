@@ -21,7 +21,6 @@ import os
 import re
 import struct
 
-from homeassistant.components.plejd.light import PLEJD_DEVICES
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import callback
 from homeassistant.helpers.event import async_track_point_in_utc_time
@@ -44,6 +43,7 @@ from .const import (
     PLEJD_SVC_UUID,
     TIME_DELTA_SYNC,
 )
+from .light import PLEJD_DEVICES
 
 _LOGGER = logging.getLogger(__name__)
 
