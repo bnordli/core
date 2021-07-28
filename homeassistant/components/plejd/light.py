@@ -231,6 +231,7 @@ async def _disconnect_devices(bus, om_objects, adapter):
             if connected:
                 _LOGGER.debug("Disconnecting %s" % (path))
                 await dev.call_disconnect()
+                _LOGGER.debug("Disconnected %s" % (path))
             await adapter.call_remove_device(path)
 
 
@@ -272,6 +273,7 @@ async def _get_plejds(bus, om, pi, adapter):
         try:
             _LOGGER.debug("Connecting to %s" % (plejd["path"]))
             await plejd["obj"].call_connect()
+            _LOGGER.debug("Connected to %s" % (plejd["path"]))
             break
         except DBusError as e:
             _LOGGER.warning("Error connecting to plejd: %s" % (str(e)))
@@ -344,10 +346,10 @@ async def _get_plejd_service(bus, om):
 
 async def _connect(pi):
     pi["characteristics"] = None
-    (bus, om) = _get_bus(pi["dbus_address"])
+    (bus, om) = await _get_bus(pi["dbus_address"])
 
     om_objects = await om.call_get_managed_objects()
-    adapter = _get_adapter(bus, om_objects)
+    adapter = await _get_adapter(bus, om_objects)
 
     if not adapter:
         _LOGGER.error("No bluetooth adapter localized")
@@ -355,7 +357,8 @@ async def _connect(pi):
     await _disconnect_devices(bus, om_objects, adapter)
     await asyncio.sleep(pi["discovery_timeout"])
 
-    plejds = _get_plejds(bus, om, pi, adapter)
+    plejds = await _get_plejds(bus, om, pi, adapter)
+    _LOGGER.debug("Found %d plejd devices" % (len(plejds)))
     if len(plejds) == 0:
         _LOGGER.warning("No plejd devices found")
         return
