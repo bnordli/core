@@ -66,7 +66,7 @@ class PlejdBus:
 
         messageBus = MessageBus(bus_type=BusType.SYSTEM, bus_address=self._address)
         self._bus = await messageBus.connect()
-        self._om = self._get_interface("/", DBUS_OM_IFACE)
+        self._om = await self._get_interface("/", DBUS_OM_IFACE)
         self._adapter = await self._get_adapter()
         if not self._adapter:
             _LOGGER.error("No bluetooth adapter localized")
@@ -78,14 +78,14 @@ class PlejdBus:
         for path, interfaces in om_objects.items():
             if BLUEZ_ADAPTER_IFACE in interfaces.keys():
                 _LOGGER.debug(f"Discovered bluetooth adapter {path}")
-                return self._get_interface(path, BLUEZ_ADAPTER_IFACE)
+                return await self._get_interface(path, BLUEZ_ADAPTER_IFACE)
 
     async def disconnect_devices(self):
         """Disconnect all currently connected devices."""
         om_objects = await self._om.call_get_managed_objects()
         for path, interfaces in om_objects.items():
             if BLUEZ_DEVICE_IFACE in interfaces.keys():
-                dev = self._get_interface(path, BLUEZ_DEVICE_IFACE)
+                dev = await self._get_interface(path, BLUEZ_DEVICE_IFACE)
                 connected = await dev.get_connected()
                 if connected:
                     _LOGGER.debug(f"Disconnecting {path}")
@@ -119,7 +119,7 @@ class PlejdBus:
         await asyncio.sleep(timeout)
 
         for plejd in plejds:
-            dev = self._get_interface(plejd["path"], BLUEZ_DEVICE_IFACE)
+            dev = await self._get_interface(plejd["path"], BLUEZ_DEVICE_IFACE)
             plejd["RSSI"] = await dev.get_rssi()
             plejd["obj"] = dev
             _LOGGER.debug(f"Discovered plejd {plejd['path']} with RSSI {plejd['RSSI']}")
@@ -150,7 +150,7 @@ class PlejdBus:
                 chrcs.append(path)
 
         async def process_plejd_service(service_path, chrc_paths):
-            service = self._get_interface(service_path, GATT_SERVICE_IFACE)
+            service = await self._get_interface(service_path, GATT_SERVICE_IFACE)
             uuid = await service.get_uuid()
             if uuid != PLEJD_SVC_UUID:
                 return None
@@ -163,8 +163,8 @@ class PlejdBus:
 
             # Process the characteristics.
             for chrc_path in chrc_paths:
-                chrc = self._get_interface(chrc_path, GATT_CHRC_IFACE)
-                chrc_prop = self._get_interface(chrc_path, DBUS_PROP_IFACE)
+                chrc = await self._get_interface(chrc_path, GATT_CHRC_IFACE)
+                chrc_prop = await self._get_interface(chrc_path, DBUS_PROP_IFACE)
 
                 uuid = await chrc.get_uuid()
 
@@ -209,7 +209,7 @@ class PlejdService:
         pi = self.pi
         pi["characteristics"] = None
         bus = PlejdBus(pi["dbus_address"])
-        if not bus.connect():
+        if not await bus.connect():
             return False
         await bus.disconnect_devices()
 
