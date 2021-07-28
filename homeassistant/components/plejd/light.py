@@ -39,7 +39,6 @@ from homeassistant.const import (
 from homeassistant.core import callback
 from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.helpers.restore_state import RestoreEntity
 import homeassistant.util.dt as dt_util
@@ -68,9 +67,6 @@ from .const import (
     TIME_DELTA_SYNC,
 )
 
-PLEJD_SERVICE = None
-PLEJD_DEVICES: Dict[bytes, Entity] = {}
-
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
@@ -91,11 +87,12 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
 class PlejdLight(LightEntity, RestoreEntity):
     """Representation of a Plejd light."""
 
-    def __init__(self, name, identity):
+    def __init__(self, name, identity, service):
         """Initialize the light."""
         self._name = name
         self._id = identity
         self._brightness = None
+        self._service = service
 
     async def async_added_to_hass(self):
         """Read the current state of the light when it is added to Home Assistant."""
@@ -162,11 +159,6 @@ class PlejdLight(LightEntity, RestoreEntity):
 
     async def async_turn_on(self, **kwargs):
         """Turn the light on."""
-        pi = self.hass.data[DOMAIN]
-        if "characteristics" not in pi:
-            _LOGGER.warning("Tried to turn on light when plejd is not connected")
-            return
-
         brightness = kwargs.get(ATTR_BRIGHTNESS)
         if brightness is None:
             self._brightness = None
@@ -181,18 +173,13 @@ class PlejdLight(LightEntity, RestoreEntity):
         _LOGGER.debug(
             f"Turning on {self._name} ({self._id}) with brightness {brightness or 0:02x}"
         )
-        await _plejd_write(pi, payload)
+        await self._service._write(payload)
 
     async def async_turn_off(self, **kwargs):
         """Turn the light off."""
-        pi = self.hass.data[DOMAIN]
-        if "characteristics" not in pi:
-            _LOGGER.warning("Tried to turn off light when plejd is not connected")
-            return
-
         payload = binascii.a2b_hex(f"{self._id:02x}0110009700")
         _LOGGER.debug(f"Turning off {self._name} ({self._id})")
-        await _plejd_write(pi, payload)
+        await self._service._write(payload)
 
 
 class PlejdService:
@@ -228,11 +215,10 @@ class PlejdService:
         if not plejd_service:
             _LOGGER.warning("Failed connecting to plejd service")
             return
-        if not await _plejd_auth(pi["key"], plejd_service[1]["auth"]):
-            return
-
         pi["address"] = plejd_service[0]
         pi["characteristics"] = plejd_service[1]
+        if not await self._authenticate(pi["key"]):
+            return
 
         @callback
         def handle_notification_cb(iface, changed_props, invalidated_props):
@@ -261,7 +247,7 @@ class PlejdService:
                     )
                     ntime = b"\x00\x01\x10\x00\x1b"
                     ntime += struct.pack("<I", int(n.timestamp())) + b"\x00"
-                    pi["hass"].async_create_task(_plejd_write(pi, ntime))
+                    pi["hass"].async_create_task(self._write(ntime))
                 return
             else:
                 _LOGGER.debug(
@@ -329,8 +315,8 @@ class PlejdService:
 
     async def _ping(self, now):
         pi = self.pi
-        if not await _plejd_ping(pi):
-            await PLEJD_SERVICE._connect()
+        if not await self._send_ping():
+            await self._connect()
         pi["remove_timer"] = async_track_point_in_utc_time(
             self.hass, self._ping, dt_util.utcnow() + timedelta(seconds=300)
         )
@@ -339,6 +325,62 @@ class PlejdService:
         pi = self.pi
         if "remove_timer" in pi:
             pi["remove_timer"]()
+
+    async def _authenticate(self, key):
+        from dbus_next.errors import DBusError
+
+        char = self.pi["characteristics"]["auth"]
+
+        try:
+            await char.call_write_value(b"\x00", {})
+            chal = await char.call_read_value({})
+            r = _plejd_chalresp(key, chal)
+            await char.call_write_value(r, {})
+        except DBusError as e:
+            _LOGGER.warning(f"Plejd authentication errored: {e}")
+            return False
+        return True
+
+    async def _send_ping(self):
+        from dbus_next.errors import DBusError
+
+        ping = os.urandom(1)
+        pi = self.pi
+        char = pi["characteristics"]["ping"]
+        try:
+            await char.call_write_value(ping, {})
+            pong = await char.call_read_value({})
+        except DBusError as e:
+            _LOGGER.warning(f"Plejd ping errored: {e}")
+            return False
+        if (ping[0] + 1) & 0xFF != pong[0]:
+            _LOGGER.warning(f"Plejd ping failed {ping[0]:02x} - {pong[0]:02x}")
+            return False
+
+        _LOGGER.debug(f"Successfully pinged with {ping[0]:02x}")
+        return True
+
+    async def _write(self, payload):
+        from dbus_next.errors import DBusError
+
+        pi = self.pi
+        pi = self.hass.data[DOMAIN]
+        if "characteristics" not in pi:
+            _LOGGER.warning("Tried to write to plejd when not connected")
+            return
+
+        try:
+            data = _plejd_enc_dec(pi["key"], pi["address"], payload)
+            await pi["characteristics"]["data"].call_write_value(data, {})
+        except DBusError as e:
+            _LOGGER.warning(f"Write failed, reconnecting: '{e}'")
+            await self._connect()
+            data = _plejd_enc_dec(pi["key"], pi["address"], payload)
+            await pi["characteristics"]["data"].call_write_value(data, {})
+
+    async def _request_update(self):
+        pi = self.pi
+        await pi["characteristics"]["lightlevel"].call_write_value(b"\x01", {})
 
 
 async def _get_bus(address):
@@ -521,56 +563,6 @@ def _plejd_enc_dec(key, addr, data):
     return output
 
 
-async def _plejd_ping(pi):
-    from dbus_next.errors import DBusError
-
-    ping = os.urandom(1)
-    char = pi["characteristics"]["ping"]
-    try:
-        await char.call_write_value(ping, {})
-        pong = await char.call_read_value({})
-    except DBusError as e:
-        _LOGGER.warning(f"Plejd ping errored: {e}")
-        return False
-    if (ping[0] + 1) & 0xFF != pong[0]:
-        _LOGGER.warning(f"Plejd ping failed {ping[0]:02x} - {pong[0]:02x}")
-        return False
-
-    _LOGGER.debug(f"Successfully pinged with {ping[0]:02x}")
-    return True
-
-
-async def _plejd_auth(key, char):
-    from dbus_next.errors import DBusError
-
-    try:
-        await char.call_write_value(b"\x00", {})
-        chal = await char.call_read_value({})
-        r = _plejd_chalresp(key, chal)
-        await char.call_write_value(r, {})
-    except DBusError as e:
-        _LOGGER.warning(f"Plejd authentication errored: {e}")
-        return False
-    return True
-
-
-async def _plejd_write(pi, payload):
-    from dbus_next.errors import DBusError
-
-    try:
-        data = _plejd_enc_dec(pi["key"], pi["address"], payload)
-        await pi["characteristics"]["data"].call_write_value(data, {})
-    except DBusError as e:
-        _LOGGER.warning(f"Write failed: '{e}'")
-        await PLEJD_SERVICE._connect()
-        data = _plejd_enc_dec(pi["key"], pi["address"], payload)
-        await pi["characteristics"]["data"].call_write_value(data, {})
-
-
-async def _plejd_update(pi):
-    await pi["characteristics"]["lightlevel"].call_write_value(b"\x01", {})
-
-
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the Plejd light platform."""
     cryptokey = binascii.a2b_hex(config.get(CONF_CRYPTO_KEY).replace("-", ""))
@@ -583,19 +575,22 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     }
 
     hass.data[DOMAIN] = plejdinfo
-    PLEJD_SERVICE = PlejdService(hass)
+    service = PlejdService(hass)
 
-    await PLEJD_SERVICE._connect()
+    await service._connect()
     if plejdinfo["characteristics"] is None:
         raise PlatformNotReady
 
-    await PLEJD_SERVICE._ping(dt_util.utcnow())
+    await service._ping(dt_util.utcnow())
     for identity, entity_info in config[CONF_DEVICES].items():
         i = int(identity)
         _LOGGER.debug(f"Adding device {i} ({entity_info[CONF_NAME]})")
-        PLEJD_DEVICES[i] = PlejdLight(entity_info[CONF_NAME], i)
+        PLEJD_DEVICES[i] = PlejdLight(entity_info[CONF_NAME], i, service)
 
     async_add_entities(PLEJD_DEVICES.values())
 
-    await _plejd_update(plejdinfo)
+    await service._request_update()
     _LOGGER.debug("All plejd setup completed")
+
+
+PLEJD_DEVICES: Dict[bytes, PlejdLight] = {}
