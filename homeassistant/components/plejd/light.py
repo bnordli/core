@@ -180,7 +180,7 @@ class PlejdLight(LightEntity, RestoreEntity):
             )
 
         _LOGGER.debug(
-            "Turning on %s(%02x) with brigtness %02x"
+            "Turning on %s(%02x) with brightness %02x"
             % (self._name, self._id, brightness or 0)
         )
         await _plejd_write(pi, payload)
@@ -193,7 +193,7 @@ class PlejdLight(LightEntity, RestoreEntity):
             return
 
         payload = binascii.a2b_hex("%02x0110009700" % (self._id))
-        _LOGGER.debug(f"Turning off {self._name}({self._id:02x})")
+        _LOGGER.debug(f"Turning off {self._name} ({self._id:02x})")
         await _plejd_write(pi, payload)
 
 
@@ -316,12 +316,18 @@ class PlejdService:
                 device = PLEJD_DEVICES[m[0]]
                 device.update_state(bool(m[1]), int.from_bytes(m[5:7], "little"))
 
-        return
+        await adapter.call_stop_discovery()
 
-    async def _add_callback(self, method, callback):
-        pi = self.pi
-        pi["characteristics"][method + "_prop"].on_properties_changed(callback)
-        await pi["characteristics"][method].call_start_notify()
+        pi["characteristics"]["last_data_prop"].on_properties_changed(
+            handle_notification_cb
+        )
+        await pi["characteristics"]["last_data"].call_start_notify()
+        pi["characteristics"]["lightlevel_prop"].on_properties_changed(
+            handle_lightlevel_cb
+        )
+        await pi["characteristics"]["lightlevel"].call_start_notify()
+
+        return
 
     async def _ping(self, now):
         pi = self.pi
@@ -399,7 +405,6 @@ async def _get_plejds(bus, om, pi, adapter):
     await adapter.call_set_discovery_filter(scan_filter)
     await adapter.call_start_discovery()
     await asyncio.sleep(pi["discovery_timeout"])
-    await adapter.call_stop_discovery()
 
     for plejd in plejds:
         device_introspection = await bus.introspect(BLUEZ_SERVICE_NAME, plejd["path"])
