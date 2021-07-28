@@ -68,6 +68,7 @@ from .const import (
     TIME_DELTA_SYNC,
 )
 
+PLEJD_SERVICE = None
 PLEJD_DEVICES: Dict[bytes, Entity] = {}
 
 _LOGGER = logging.getLogger(__name__)
@@ -196,6 +197,146 @@ class PlejdLight(LightEntity, RestoreEntity):
         await _plejd_write(pi, payload)
 
 
+class PlejdService:
+    """Representation of the Plejd service."""
+
+    def __init__(self, hass):
+        """Initialize the service."""
+        self.hass = hass
+        self.pi = hass.data[DOMAIN]
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._stop_plejd)
+
+    async def _connect(self):
+        pi = self.pi
+        pi["characteristics"] = None
+        (bus, om) = await _get_bus(pi["dbus_address"])
+
+        om_objects = await om.call_get_managed_objects()
+        adapter = await _get_adapter(bus, om_objects)
+
+        if not adapter:
+            _LOGGER.error("No bluetooth adapter localized")
+            return
+        await _disconnect_devices(bus, om_objects, adapter)
+
+        plejds = await _get_plejds(bus, om, pi, adapter)
+        _LOGGER.debug("Found %d plejd devices" % (len(plejds)))
+        if len(plejds) == 0:
+            _LOGGER.warning("No plejd devices found")
+            return
+
+        await asyncio.sleep(pi["discovery_timeout"])
+        plejd_service = await _get_plejd_service(bus, om)
+        if not plejd_service:
+            _LOGGER.warning("Failed connecting to plejd service")
+            return
+        if not await _plejd_auth(pi["key"], plejd_service[1]["auth"]):
+            return
+
+        pi["address"] = plejd_service[0]
+        pi["characteristics"] = plejd_service[1]
+
+        @callback
+        def handle_notification_cb(iface, changed_props, invalidated_props):
+            if iface != GATT_CHRC_IFACE:
+                return
+            if not len(changed_props):
+                return
+            value = changed_props.get("Value", None)
+            if not value:
+                return
+
+            dec = _plejd_enc_dec(pi["key"], pi["address"], value.value)
+            # check if this is a device we care about
+            if dec[0] in PLEJD_DEVICES:
+                device = PLEJD_DEVICES[dec[0]]
+            elif dec[0] == 0x01 and dec[3:5] == b"\x00\x1b":
+                n = dt_util.now().replace(tzinfo=None)
+                time = datetime.fromtimestamp(struct.unpack_from("<I", dec, 5)[0])
+                n = n + timedelta(minutes=pi["offset_minutes"])
+                delta = abs(time - n)
+                _LOGGER.debug("Plejd network reports time as '%s'", time)
+                s = delta.total_seconds()
+                if s > TIME_DELTA_SYNC:
+                    _LOGGER.info(
+                        "Plejd time delta is %d seconds, setting time to '%s'.", s, n
+                    )
+                    ntime = b"\x00\x01\x10\x00\x1b"
+                    ntime += struct.pack("<I", int(n.timestamp())) + b"\x00"
+                    pi["hass"].async_create_task(_plejd_write(pi, ntime))
+                return
+            else:
+                _LOGGER.debug(
+                    f"No match for device '{dec[0]:02x}' ({binascii.b2a_hex(dec)})"
+                )
+                return
+            dim = None
+            state = None
+            if dec[3:5] == b"\x00\xc8" or dec[3:5] == b"\x00\x98":
+                # 00c8 and 0098 both mean state+dim
+                state = dec[5]
+                dim = int.from_bytes(dec[6:8], "little")
+            elif dec[3:5] == b"\x00\x97":
+                # 0097 is state only
+                state = dec[5]
+            else:
+                _LOGGER.debug(
+                    "No match for command '%s' (%s)"
+                    % (binascii.b2a_hex(dec[3:5]), binascii.b2a_hex(dec))
+                )
+                return
+
+            device.update_state(bool(state), dim)
+
+        @callback
+        def handle_lightlevel_cb(iface, changed_props, invalidated_props):
+            if iface != GATT_CHRC_IFACE:
+                return
+            if not len(changed_props):
+                return
+            value = changed_props.get("Value", None)
+            if not value:
+                return
+
+            value = value.value
+            if len(value) != 20 and len(value) != 10:
+                _LOGGER.debug(
+                    "Unknown length data received for lightlevel: '%s'"
+                    % (binascii.b2a_hex(value))
+                )
+                return
+
+            msgs = [value[0:10]]
+            if len(value) == 20:
+                msgs.append(value[10:20])
+
+            for m in msgs:
+                if m[0] not in PLEJD_DEVICES:
+                    continue
+                device = PLEJD_DEVICES[m[0]]
+                device.update_state(bool(m[1]), int.from_bytes(m[5:7], "little"))
+
+        return
+
+    async def _add_callback(self, method, callback):
+        pi = self.pi
+        pi["characteristics"][method + "_prop"].on_properties_changed(callback)
+        await pi["characteristics"][method].call_start_notify()
+
+    async def _ping(self, now):
+        pi = self.pi
+        if not await _plejd_ping(pi):
+            await PLEJD_SERVICE._connect()
+        pi["remove_timer"] = async_track_point_in_utc_time(
+            self.hass, self._ping, dt_util.utcnow() + timedelta(seconds=300)
+        )
+
+    async def _stop_plejd(self, event):
+        pi = self.pi
+        if "remove_timer" in pi:
+            pi["remove_timer"]()
+
+
 async def _get_bus(address):
     from dbus_next import BusType
     from dbus_next.aio import MessageBus
@@ -258,6 +399,7 @@ async def _get_plejds(bus, om, pi, adapter):
     await adapter.call_set_discovery_filter(scan_filter)
     await adapter.call_start_discovery()
     await asyncio.sleep(pi["discovery_timeout"])
+    await adapter.call_stop_discovery()
 
     for plejd in plejds:
         device_introspection = await bus.introspect(BLUEZ_SERVICE_NAME, plejd["path"])
@@ -345,127 +487,6 @@ async def _get_plejd_service(bus, om):
     return None
 
 
-async def _connect(pi):
-    pi["characteristics"] = None
-    (bus, om) = await _get_bus(pi["dbus_address"])
-
-    om_objects = await om.call_get_managed_objects()
-    adapter = await _get_adapter(bus, om_objects)
-
-    if not adapter:
-        _LOGGER.error("No bluetooth adapter localized")
-        return
-    await _disconnect_devices(bus, om_objects, adapter)
-
-    plejds = await _get_plejds(bus, om, pi, adapter)
-    _LOGGER.debug("Found %d plejd devices" % (len(plejds)))
-    if len(plejds) == 0:
-        _LOGGER.warning("No plejd devices found")
-        return
-
-    await asyncio.sleep(pi["discovery_timeout"])
-    plejd_service = await _get_plejd_service(bus, om)
-    if not plejd_service:
-        _LOGGER.warning("Failed connecting to plejd service")
-        return
-    if not await _plejd_auth(pi["key"], plejd_service[1]["auth"]):
-        return
-
-    pi["address"] = plejd_service[0]
-    pi["characteristics"] = plejd_service[1]
-
-    @callback
-    def handle_notification_cb(iface, changed_props, invalidated_props):
-        if iface != GATT_CHRC_IFACE:
-            return
-        if not len(changed_props):
-            return
-        value = changed_props.get("Value", None)
-        if not value:
-            return
-
-        dec = _plejd_enc_dec(pi["key"], pi["address"], value.value)
-        # check if this is a device we care about
-        if dec[0] in PLEJD_DEVICES:
-            device = PLEJD_DEVICES[dec[0]]
-        elif dec[0] == 0x01 and dec[3:5] == b"\x00\x1b":
-            n = dt_util.now().replace(tzinfo=None)
-            time = datetime.fromtimestamp(struct.unpack_from("<I", dec, 5)[0])
-            n = n + timedelta(minutes=pi["offset_minutes"])
-            delta = abs(time - n)
-            _LOGGER.debug("Plejd network reports time as '%s'", time)
-            s = delta.total_seconds()
-            if s > TIME_DELTA_SYNC:
-                _LOGGER.info(
-                    "Plejd time delta is %d seconds, setting time to '%s'.", s, n
-                )
-                ntime = b"\x00\x01\x10\x00\x1b"
-                ntime += struct.pack("<I", int(n.timestamp())) + b"\x00"
-                pi["hass"].async_create_task(_plejd_write(pi, ntime))
-            return
-        else:
-            _LOGGER.debug(
-                f"No match for device '{dec[0]:02x}' ({binascii.b2a_hex(dec)})"
-            )
-            return
-        dim = None
-        state = None
-        if dec[3:5] == b"\x00\xc8" or dec[3:5] == b"\x00\x98":
-            # 00c8 and 0098 both mean state+dim
-            state = dec[5]
-            dim = int.from_bytes(dec[6:8], "little")
-        elif dec[3:5] == b"\x00\x97":
-            # 0097 is state only
-            state = dec[5]
-        else:
-            _LOGGER.debug(
-                "No match for command '%s' (%s)"
-                % (binascii.b2a_hex(dec[3:5]), binascii.b2a_hex(dec))
-            )
-            return
-
-        device.update_state(bool(state), dim)
-
-    @callback
-    def handle_lightlevel_cb(iface, changed_props, invalidated_props):
-        if iface != GATT_CHRC_IFACE:
-            return
-        if not len(changed_props):
-            return
-        value = changed_props.get("Value", None)
-        if not value:
-            return
-
-        value = value.value
-        if len(value) != 20 and len(value) != 10:
-            _LOGGER.debug(
-                "Unknown length data received for lightlevel: '%s'"
-                % (binascii.b2a_hex(value))
-            )
-            return
-
-        msgs = [value[0:10]]
-        if len(value) == 20:
-            msgs.append(value[10:20])
-
-        for m in msgs:
-            if m[0] not in PLEJD_DEVICES:
-                continue
-            device = PLEJD_DEVICES[m[0]]
-            device.update_state(bool(m[1]), int.from_bytes(m[5:7], "little"))
-
-    await adapter.call_stop_discovery()
-
-    pi["characteristics"]["last_data_prop"].on_properties_changed(
-        handle_notification_cb
-    )
-    await pi["characteristics"]["last_data"].call_start_notify()
-    pi["characteristics"]["lightlevel_prop"].on_properties_changed(handle_lightlevel_cb)
-    await pi["characteristics"]["lightlevel"].call_start_notify()
-
-    return
-
-
 def _plejd_chalresp(key, chal):
     import hashlib
 
@@ -540,7 +561,7 @@ async def _plejd_write(pi, payload):
         await pi["characteristics"]["data"].call_write_value(data, {})
     except DBusError as e:
         _LOGGER.warning("Write failed: '%s'" % (e))
-        await _connect(pi)
+        await PLEJD_SERVICE._connect()
         data = _plejd_enc_dec(pi["key"], pi["address"], payload)
         await pi["characteristics"]["data"].call_write_value(data, {})
 
@@ -561,26 +582,13 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     }
 
     hass.data[DOMAIN] = plejdinfo
+    PLEJD_SERVICE = PlejdService(hass)
 
-    async def _ping(now):
-        pi = hass.data[DOMAIN]
-        if not await _plejd_ping(pi):
-            await _connect(pi)
-        plejdinfo["remove_timer"] = async_track_point_in_utc_time(
-            hass, _ping, dt_util.utcnow() + timedelta(seconds=300)
-        )
-
-    async def _stop_plejd(event):
-        if "remove_timer" in plejdinfo:
-            plejdinfo["remove_timer"]()
-
-    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _stop_plejd)
-
-    await _connect(plejdinfo)
+    await PLEJD_SERVICE._connect()
     if plejdinfo["characteristics"] is None:
         raise PlatformNotReady
 
-    await _ping(dt_util.utcnow())
+    await PLEJD_SERVICE._ping(dt_util.utcnow())
     for identity, entity_info in config[CONF_DEVICES].items():
         i = int(identity)
         _LOGGER.debug("Adding device %d (%s)" % (i, entity_info[CONF_NAME]))
