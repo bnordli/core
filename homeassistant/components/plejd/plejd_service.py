@@ -66,24 +66,24 @@ class PlejdService:
 
         if not adapter:
             _LOGGER.error("No bluetooth adapter localized")
-            return
+            return False
         await _disconnect_devices(bus, om_objects, adapter)
 
         plejds = await _get_plejds(bus, om, pi, adapter)
         _LOGGER.debug(f"Found {len(plejds)} plejd devices")
         if len(plejds) == 0:
             _LOGGER.warning("No plejd devices found")
-            return
+            return False
 
         await asyncio.sleep(pi["discovery_timeout"])
         plejd_service = await _get_plejd_service(bus, om)
         if not plejd_service:
             _LOGGER.warning("Failed connecting to plejd service")
-            return
+            return False
         pi["address"] = plejd_service[0]
         pi["characteristics"] = plejd_service[1]
         if not await self._authenticate(pi["key"]):
-            return
+            return False
 
         @callback
         def handle_notification_cb(iface, changed_props, invalidated_props):
@@ -176,7 +176,7 @@ class PlejdService:
         )
         await pi["characteristics"]["lightlevel"].call_start_notify()
 
-        return
+        return True
 
     async def _ping(self, now):
         pi = self.pi

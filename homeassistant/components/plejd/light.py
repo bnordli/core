@@ -124,12 +124,13 @@ class PlejdLight(LightEntity, RestoreEntity):
         """Update the state of the light."""
         self._state = state
         self._brightness = brightness
+        state = "on" if state else "off"
         if brightness:
             _LOGGER.debug(
-                f"{self._name} ({self._id}) turned {state!r} with brightness {brightness:04x}"
+                f"{self._name} ({self._id}) turned {state} with brightness {brightness:04x}"
             )
         else:
-            _LOGGER.debug(f"{self._name} ({self._id}) turned {state!r}")
+            _LOGGER.debug(f"{self._name} ({self._id}) turned {state}")
         self.async_schedule_update_ha_state()
 
     async def async_turn_on(self, **kwargs):
@@ -159,9 +160,8 @@ class PlejdLight(LightEntity, RestoreEntity):
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the Plejd light platform."""
-    cryptokey = binascii.a2b_hex(config.get(CONF_CRYPTO_KEY).replace("-", ""))
     plejdinfo = {
-        "key": cryptokey,
+        "key": binascii.a2b_hex(config.get(CONF_CRYPTO_KEY).replace("-", "")),
         "hass": hass,
         "offset_minutes": config.get(CONF_OFFSET_MINUTES),
         "discovery_timeout": config[CONF_DISCOVERY_TIMEOUT],
@@ -172,8 +172,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     hass.data[DOMAIN] = plejdinfo
     service = PlejdService(hass)
 
-    await service._connect()
-    if plejdinfo["characteristics"] is None:
+    if not await service._connect():
         raise PlatformNotReady
 
     await service._ping(dt_util.utcnow())
