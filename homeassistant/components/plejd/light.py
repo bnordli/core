@@ -20,8 +20,8 @@ import voluptuous as vol
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
+    COLOR_MODE_BRIGHTNESS,
     PLATFORM_SCHEMA,
-    SUPPORT_BRIGHTNESS,
     LightEntity,
 )
 from homeassistant.const import CONF_DEVICES, CONF_NAME, STATE_ON
@@ -67,6 +67,7 @@ class PlejdLight(LightEntity, RestoreEntity):
         self._id = identity
         self._service = service
         self._brightness = None
+        self._attr_color_mode = COLOR_MODE_BRIGHTNESS
 
     async def async_added_to_hass(self):
         """Read the current state of the light when it is added to Home Assistant."""
@@ -107,11 +108,6 @@ class PlejdLight(LightEntity, RestoreEntity):
             return self._brightness >> 8
         else:
             return None
-
-    @property
-    def supported_features(self):
-        """Return the supported features of this light."""
-        return SUPPORT_BRIGHTNESS
 
     @property
     def unique_id(self):
