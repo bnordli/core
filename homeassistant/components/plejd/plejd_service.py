@@ -55,10 +55,6 @@ class PlejdBus:
         self._address = address
         self._chars = {}
 
-    def char(self, char):
-        """Get one characteristic of the bus."""
-        return self._chars[char]
-
     async def write_data(self, char, data):
         """Write data to one characteristic."""
         await self._chars[char].call_write_value(data, {})
@@ -66,6 +62,11 @@ class PlejdBus:
     async def read_data(self, char):
         """Read data from one characteristic."""
         return await self._chars[char].call_read_value({})
+
+    async def add_callback(self, method, callback):
+        """Register a callback on a characteristic."""
+        self._chars[method + "_prop"].on_properties_changed(callback)
+        await self._chars[method].call_start_notify()
 
     async def _get_interface(self, path, interface):
         introspection = await self._bus.introspect(BLUEZ_SERVICE_NAME, path)
@@ -312,10 +313,8 @@ class PlejdService:
                 device = pi["devices"][m[0]]
                 device.update_state(bool(m[1]), int.from_bytes(m[5:7], "little"))
 
-        self._bus.char("last_data_prop").on_properties_changed(handle_notification_cb)
-        await self._bus.char("last_data").call_start_notify()
-        self._bus.char("lightlevel_prop").on_properties_changed(handle_lightlevel_cb)
-        await self._bus.char("lightlevel").call_start_notify()
+        await self._bus.add_callback("last_data", handle_notification_cb)
+        await self._bus.add_callback("lightlevel", handle_lightlevel_cb)
 
         return True
 
