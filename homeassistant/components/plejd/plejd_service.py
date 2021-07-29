@@ -59,6 +59,14 @@ class PlejdBus:
         """Get one characteristic of the bus."""
         return self._chars[char]
 
+    async def write_data(self, char, data):
+        """Write data to one characteristic."""
+        await self._chars[char].call_write_value(data, {})
+
+    async def read_data(self, char):
+        """Read data from one characteristic."""
+        return await self._chars[char].call_read_value({})
+
     async def _get_interface(self, path, interface):
         introspection = await self._bus.introspect(BLUEZ_SERVICE_NAME, path)
         object = self._bus.get_proxy_object(BLUEZ_SERVICE_NAME, path, introspection)
@@ -325,13 +333,10 @@ class PlejdService:
     async def _authenticate(self, key):
         from dbus_next.errors import DBusError
 
-        char = self._bus.char("auth")
-
         try:
-            await char.call_write_value(b"\x00", {})
-            chal = await char.call_read_value({})
-            r = _plejd_chalresp(key, chal)
-            await char.call_write_value(r, {})
+            await self._bus.write_data("auth", b"\x00")
+            challenge = await self._bus.read_data("auth")
+            await self._bus.write_data("auth", _plejd_chalresp(key, challenge))
         except DBusError as e:
             _LOGGER.warning(f"Plejd authentication errored: {e}")
             return False
@@ -341,10 +346,9 @@ class PlejdService:
         from dbus_next.errors import DBusError
 
         ping = os.urandom(1)
-        char = self._bus.char("ping")
         try:
-            await char.call_write_value(ping, {})
-            pong = await char.call_read_value({})
+            await self._bus.write_data("ping", ping)
+            pong = await self._bus.read_data("ping")
         except DBusError as e:
             _LOGGER.warning(f"Plejd ping errored: {e}")
             return False
@@ -365,16 +369,16 @@ class PlejdService:
 
         try:
             data = _plejd_enc_dec(pi["key"], pi["address"], payload)
-            await self._bus.char("data").call_write_value(data, {})
+            await self._bus.write_data("data", data)
         except DBusError as e:
             _LOGGER.warning(f"Write failed, reconnecting: '{e}'")
             await self.connect()
             data = _plejd_enc_dec(pi["key"], pi["address"], payload)
-            await self._bus.char("data").call_write_value(data, {})
+            await self._bus.write_data("data", data)
 
     async def request_update(self):
         """Request an update of all devices."""
-        await self._bus.char("lightlevel").call_write_value(b"\x01", {})
+        await self._bus.write_data("lightlevel", b"\x01")
 
 
 def _plejd_chalresp(key, chal):
