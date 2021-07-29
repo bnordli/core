@@ -65,8 +65,8 @@ class PlejdLight(LightEntity, RestoreEntity):
         """Initialize the light."""
         self._name = name
         self._id = identity
-        self._brightness = None
         self._service = service
+        self._brightness = None
 
     async def async_added_to_hass(self):
         """Read the current state of the light when it is added to Home Assistant."""
@@ -97,8 +97,8 @@ class PlejdLight(LightEntity, RestoreEntity):
 
     @property
     def assumed_state(self):
-        """Plejd light status can only be assumed."""
-        return True
+        """Plejd light status are pushed to HA."""
+        return False
 
     @property
     def brightness(self):
