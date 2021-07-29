@@ -244,6 +244,20 @@ class PlejdService:
                 return
 
             dec = _plejd_enc_dec(pi["key"], pi["address"], value.value)
+            _LOGGER.debug(f"Received command {binascii.b2a_hex(dec)}")
+
+            # Format
+            # 012345...
+            # irrccdddd
+            # i = device_id
+            #     0 = broadcast
+            #     1 = broadcast time
+            #     2 = scenes
+            #     3... id
+            # r = command/read
+            # c = command
+            # d = data
+
             # check if this is a device we care about
             if dec[0] in pi["devices"]:
                 device = pi["devices"][dec[0]]
@@ -296,6 +310,12 @@ class PlejdService:
                 return
 
             value = value.value
+            # One or two messages of format
+            # 0123456789
+            # is???dd???
+            # i = device_id
+            # s = state (0 or 1)
+            # d = brightness
             if len(value) != 20 and len(value) != 10:
                 lightlevel = binascii.b2a_hex(value)
                 _LOGGER.debug(
