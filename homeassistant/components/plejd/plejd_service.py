@@ -98,7 +98,7 @@ class PlejdBus:
                     _LOGGER.debug(f"Disconnected {path}")
                 await self._adapter.call_remove_device(path)
 
-    async def get_plejds(self, timeout):
+    async def connect_device(self, timeout):
         """Get all plejds and connect to the closest device."""
         from dbus_next import Variant
         from dbus_next.errors import DBusError
@@ -123,6 +123,11 @@ class PlejdBus:
         await self._adapter.call_start_discovery()
         await asyncio.sleep(timeout)
 
+        if len(plejds) == 0:
+            _LOGGER.warning("No plejd devices found")
+            return False
+
+        _LOGGER.debug(f"Found {len(plejds)} plejd devices")
         for plejd in plejds:
             dev = await self._get_interface(plejd["path"], BLUEZ_DEVICE_IFACE)
             plejd["RSSI"] = await dev.get_rssi()
@@ -138,15 +143,12 @@ class PlejdBus:
                 break
             except DBusError as e:
                 _LOGGER.warning(f"Error connecting to plejd: {e}")
-
-        return plejds
-
-    async def stop_discovery(self):
-        """Stop discovery of devices."""
         await self._adapter.call_stop_discovery()
+        await asyncio.sleep(timeout)
+        return True
 
-    async def get_plejd_service(self):
-        """Get the plejd service."""
+    async def get_plejd_address(self):
+        """Get the plejd address and also collect characteristics."""
         om_objects = await self._om.call_get_managed_objects()
         chrcs = []
 
@@ -154,17 +156,21 @@ class PlejdBus:
             if GATT_CHRC_IFACE in interfaces.keys():
                 chrcs.append(path)
 
-        async def process_plejd_service(service_path, chrc_paths):
-            service = await self._get_interface(service_path, GATT_SERVICE_IFACE)
+        for path, interfaces in om_objects.items():
+            if GATT_SERVICE_IFACE not in interfaces.keys():
+                continue
+
+            service = await self._get_interface(path, GATT_SERVICE_IFACE)
             uuid = await service.get_uuid()
             if uuid != PLEJD_SVC_UUID:
-                return None
+                continue
 
             dev = await service.get_device()
             x = re.search("dev_([0-9A-F_]+)$", dev)
             addr = binascii.a2b_hex(x.group(1).replace("_", ""))[::-1]
 
             # Process the characteristics.
+            chrc_paths = [d for d in chrcs if d.startswith(path + "/")]
             for chrc_path in chrc_paths:
                 chrc = await self._get_interface(chrc_path, GATT_CHRC_IFACE)
                 chrc_prop = await self._get_interface(chrc_path, DBUS_PROP_IFACE)
@@ -185,16 +191,6 @@ class PlejdBus:
                     self._chars["lightlevel_prop"] = chrc_prop
 
             return addr
-
-        for path, interfaces in om_objects.items():
-            if GATT_SERVICE_IFACE not in interfaces.keys():
-                continue
-
-            chrc_paths = [d for d in chrcs if d.startswith(path + "/")]
-
-            plejd_service = await process_plejd_service(path, chrc_paths)
-            if plejd_service:
-                return plejd_service
 
         return None
 
@@ -218,19 +214,13 @@ class PlejdService:
         if not await self._bus.connect():
             return False
         await self._bus.disconnect_devices()
-
-        plejds = await self._bus.get_plejds(pi["discovery_timeout"])
-        _LOGGER.debug(f"Found {len(plejds)} plejd devices")
-        if len(plejds) == 0:
-            _LOGGER.warning("No plejd devices found")
+        if not await self._bus.connect_device(pi["discovery_timeout"]):
             return False
 
-        await asyncio.sleep(pi["discovery_timeout"])
-        plejd_service = await self._bus.get_plejd_service()
-        if not plejd_service:
+        pi["address"] = await self._bus.get_plejd_address()
+        if not pi["address"]:
             _LOGGER.warning("Failed connecting to plejd service")
             return False
-        pi["address"] = plejd_service
         if not await self._authenticate(pi["key"]):
             return False
 
@@ -313,8 +303,6 @@ class PlejdService:
                     continue
                 device = pi["devices"][m[0]]
                 device.update_state(bool(m[1]), int.from_bytes(m[5:7], "little"))
-
-        await self._bus.stop_discovery()
 
         self._bus.char("last_data_prop").on_properties_changed(handle_notification_cb)
         await self._bus.char("last_data").call_start_notify()
