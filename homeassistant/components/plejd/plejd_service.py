@@ -65,7 +65,19 @@ class PlejdBus:
 
     async def add_callback(self, method, callback):
         """Register a callback on a characteristic."""
-        self._chars[method + "_prop"].on_properties_changed(callback)
+
+        @callback
+        def cb(iface, changed_props, invalidated_props):
+            if iface != GATT_CHRC_IFACE:
+                return
+            if not len(changed_props):
+                return
+            value = changed_props.get("Value", None)
+            if not value:
+                return
+            callback(value.value)
+
+        self._chars[method + "_prop"].on_properties_changed(cb)
         await self._chars[method].call_start_notify()
 
     async def _get_interface(self, path, interface):
@@ -234,16 +246,8 @@ class PlejdService:
             return False
 
         @callback
-        def handle_notification_cb(iface, changed_props, invalidated_props):
-            if iface != GATT_CHRC_IFACE:
-                return
-            if not len(changed_props):
-                return
-            value = changed_props.get("Value", None)
-            if not value:
-                return
-
-            dec = _plejd_enc_dec(pi["key"], pi["address"], value.value)
+        def handle_notification_cb(value):
+            dec = _plejd_enc_dec(pi["key"], pi["address"], value)
             _LOGGER.debug(f"Received command {binascii.b2a_hex(dec)}")
 
             # Format
@@ -254,8 +258,13 @@ class PlejdService:
             #     1 = broadcast time
             #     2 = scenes
             #     3... id
-            # r = command/read
+            # r = read?
             # c = command
+            #     001b: time
+            #     0016: button push, data = button + unknown
+            #     0021: set scene, data = scene id
+            #     0097: state update, data = state, dim
+            #     00c8, 0098: state/dim update
             # d = data
 
             # check if this is a device we care about
@@ -300,16 +309,7 @@ class PlejdService:
             device.update_state(bool(state), dim)
 
         @callback
-        def handle_lightlevel_cb(iface, changed_props, invalidated_props):
-            if iface != GATT_CHRC_IFACE:
-                return
-            if not len(changed_props):
-                return
-            value = changed_props.get("Value", None)
-            if not value:
-                return
-
-            value = value.value
+        def handle_lightlevel_cb(value):
             # One or two messages of format
             # 0123456789
             # is???dd???
