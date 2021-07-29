@@ -162,17 +162,15 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     """Set up the Plejd light platform."""
     plejdinfo = {
         "key": binascii.a2b_hex(config.get(CONF_CRYPTO_KEY).replace("-", "")),
-        "hass": hass,
         "offset_minutes": config.get(CONF_OFFSET_MINUTES),
         "discovery_timeout": config[CONF_DISCOVERY_TIMEOUT],
-        "dbus_address": config[CONF_DBUS_ADDRESS],
         "devices": {},
     }
 
     hass.data[DOMAIN] = plejdinfo
     service = PlejdService(hass)
 
-    if not await service.connect():
+    if not await service.connect(config[CONF_DBUS_ADDRESS]):
         raise PlatformNotReady
 
     await service.ping(dt_util.utcnow())

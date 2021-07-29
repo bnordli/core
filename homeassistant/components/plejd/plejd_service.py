@@ -53,6 +53,11 @@ class PlejdBus:
     def __init__(self, address):
         """Initialize the bus."""
         self._address = address
+        self._chars = {}
+
+    def char(self, char):
+        """Get one characteristic of the bus."""
+        return self._chars[char]
 
     async def _get_interface(self, path, interface):
         introspection = await self._bus.introspect(BLUEZ_SERVICE_NAME, path)
@@ -159,8 +164,6 @@ class PlejdBus:
             x = re.search("dev_([0-9A-F_]+)$", dev)
             addr = binascii.a2b_hex(x.group(1).replace("_", ""))[::-1]
 
-            chars = {}
-
             # Process the characteristics.
             for chrc_path in chrc_paths:
                 chrc = await self._get_interface(chrc_path, GATT_CHRC_IFACE)
@@ -169,19 +172,19 @@ class PlejdBus:
                 uuid = await chrc.get_uuid()
 
                 if uuid == PLEJD_DATA_UUID:
-                    chars["data"] = chrc
+                    self._chars["data"] = chrc
                 elif uuid == PLEJD_LAST_DATA_UUID:
-                    chars["last_data"] = chrc
-                    chars["last_data_prop"] = chrc_prop
+                    self._chars["last_data"] = chrc
+                    self._chars["last_data_prop"] = chrc_prop
                 elif uuid == PLEJD_AUTH_UUID:
-                    chars["auth"] = chrc
+                    self._chars["auth"] = chrc
                 elif uuid == PLEJD_PING_UUID:
-                    chars["ping"] = chrc
+                    self._chars["ping"] = chrc
                 elif uuid == PLEJD_LIGHTLEVEL_UUID:
-                    chars["lightlevel"] = chrc
-                    chars["lightlevel_prop"] = chrc_prop
+                    self._chars["lightlevel"] = chrc
+                    self._chars["lightlevel_prop"] = chrc_prop
 
-            return (addr, chars)
+            return addr
 
         for path, interfaces in om_objects.items():
             if GATT_SERVICE_IFACE not in interfaces.keys():
@@ -199,34 +202,35 @@ class PlejdBus:
 class PlejdService:
     """Representation of the Plejd service."""
 
-    def __init__(self, hass):
+    def __init__(self, hass, address):
         """Initialize the service."""
-        self.hass = hass
-        self.pi = hass.data[DOMAIN]
+        self._hass = hass
+        self._pi = hass.data[DOMAIN]
+        self._address = address
+        self._bus = None
+        self._remove_timer = lambda: ()
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._stop_plejd)
 
     async def connect(self):
         """Connect to the Plejd service."""
-        pi = self.pi
-        pi["characteristics"] = None
-        bus = PlejdBus(pi["dbus_address"])
-        if not await bus.connect():
+        pi = self._pi
+        self._bus = PlejdBus(self._address)
+        if not await self._bus.connect():
             return False
-        await bus.disconnect_devices()
+        await self._bus.disconnect_devices()
 
-        plejds = await bus.get_plejds(pi["discovery_timeout"])
+        plejds = await self._bus.get_plejds(pi["discovery_timeout"])
         _LOGGER.debug(f"Found {len(plejds)} plejd devices")
         if len(plejds) == 0:
             _LOGGER.warning("No plejd devices found")
             return False
 
         await asyncio.sleep(pi["discovery_timeout"])
-        plejd_service = await bus.get_plejd_service()
+        plejd_service = await self._bus.get_plejd_service()
         if not plejd_service:
             _LOGGER.warning("Failed connecting to plejd service")
             return False
-        pi["address"] = plejd_service[0]
-        pi["characteristics"] = plejd_service[1]
+        pi["address"] = plejd_service
         if not await self._authenticate(pi["key"]):
             return False
 
@@ -257,7 +261,7 @@ class PlejdService:
                     )
                     ntime = b"\x00\x01\x10\x00\x1b"
                     ntime += struct.pack("<I", int(n.timestamp())) + b"\x00"
-                    pi["hass"].async_create_task(self._write(ntime))
+                    self._hass.async_create_task(self._write(ntime))
                 return
             else:
                 _LOGGER.debug(
@@ -310,37 +314,30 @@ class PlejdService:
                 device = pi["devices"][m[0]]
                 device.update_state(bool(m[1]), int.from_bytes(m[5:7], "little"))
 
-        await bus.stop_discovery()
+        await self._bus.stop_discovery()
 
-        pi["characteristics"]["last_data_prop"].on_properties_changed(
-            handle_notification_cb
-        )
-        await pi["characteristics"]["last_data"].call_start_notify()
-        pi["characteristics"]["lightlevel_prop"].on_properties_changed(
-            handle_lightlevel_cb
-        )
-        await pi["characteristics"]["lightlevel"].call_start_notify()
+        self._bus.char("last_data_prop").on_properties_changed(handle_notification_cb)
+        await self._bus.char("last_data").call_start_notify()
+        self._bus.char("lightlevel_prop").on_properties_changed(handle_lightlevel_cb)
+        await self._bus.char("lightlevel").call_start_notify()
 
         return True
 
     async def ping(self, now):
         """Send a ping and then schedule another in the future."""
-        pi = self.pi
         if not await self._send_ping():
             await self.connect()
-        pi["remove_timer"] = async_track_point_in_utc_time(
-            self.hass, self.ping, dt_util.utcnow() + timedelta(seconds=300)
+        self._remove_timer = async_track_point_in_utc_time(
+            self._hass, self.ping, dt_util.utcnow() + timedelta(seconds=300)
         )
 
     async def _stop_plejd(self, event):
-        pi = self.pi
-        if "remove_timer" in pi:
-            pi["remove_timer"]()
+        self._remove_timer()
 
     async def _authenticate(self, key):
         from dbus_next.errors import DBusError
 
-        char = self.pi["characteristics"]["auth"]
+        char = self._bus.char("auth")
 
         try:
             await char.call_write_value(b"\x00", {})
@@ -356,8 +353,7 @@ class PlejdService:
         from dbus_next.errors import DBusError
 
         ping = os.urandom(1)
-        pi = self.pi
-        char = pi["characteristics"]["ping"]
+        char = self._bus.char("ping")
         try:
             await char.call_write_value(ping, {})
             pong = await char.call_read_value({})
@@ -374,25 +370,23 @@ class PlejdService:
     async def _write(self, payload):
         from dbus_next.errors import DBusError
 
-        pi = self.pi
-        pi = self.hass.data[DOMAIN]
-        if "characteristics" not in pi:
+        pi = self._pi
+        if not self._bus:
             _LOGGER.warning("Tried to write to plejd when not connected")
             return
 
         try:
             data = _plejd_enc_dec(pi["key"], pi["address"], payload)
-            await pi["characteristics"]["data"].call_write_value(data, {})
+            await self._bus("data").call_write_value(data, {})
         except DBusError as e:
             _LOGGER.warning(f"Write failed, reconnecting: '{e}'")
-            await self._connect()
+            await self.connect()
             data = _plejd_enc_dec(pi["key"], pi["address"], payload)
-            await pi["characteristics"]["data"].call_write_value(data, {})
+            await self._bus("data").call_write_value(data, {})
 
     async def request_update(self):
         """Request an update of all devices."""
-        pi = self.pi
-        await pi["characteristics"]["lightlevel"].call_write_value(b"\x01", {})
+        await self._bus.char("lightlevel").call_write_value(b"\x01", {})
 
 
 def _plejd_chalresp(key, chal):
