@@ -74,7 +74,7 @@ class PlejdBus:
         self._om = await self._get_interface("/", DBUS_OM_IFACE)
         self._adapter = await self._get_adapter()
         if not self._adapter:
-            _LOGGER.error("No bluetooth adapter localized")
+            _LOGGER.error("No bluetooth adapter discovered")
             return False
         return True
 
@@ -377,12 +377,12 @@ class PlejdService:
 
         try:
             data = _plejd_enc_dec(pi["key"], pi["address"], payload)
-            await self._bus("data").call_write_value(data, {})
+            await self._bus.char("data").call_write_value(data, {})
         except DBusError as e:
             _LOGGER.warning(f"Write failed, reconnecting: '{e}'")
             await self.connect()
             data = _plejd_enc_dec(pi["key"], pi["address"], payload)
-            await self._bus("data").call_write_value(data, {})
+            await self._bus.char("data").call_write_value(data, {})
 
     async def request_update(self):
         """Request an update of all devices."""

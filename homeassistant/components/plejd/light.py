@@ -168,9 +168,9 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     }
 
     hass.data[DOMAIN] = plejdinfo
-    service = PlejdService(hass)
+    service = PlejdService(hass, config[CONF_DBUS_ADDRESS])
 
-    if not await service.connect(config[CONF_DBUS_ADDRESS]):
+    if not await service.connect():
         raise PlatformNotReady
 
     await service.ping(dt_util.utcnow())
