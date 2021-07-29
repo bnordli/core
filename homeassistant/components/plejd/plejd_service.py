@@ -63,7 +63,7 @@ class PlejdBus:
         """Read data from one characteristic."""
         return await self._chars[char].call_read_value({})
 
-    async def add_callback(self, method, callback):
+    async def add_callback(self, method, c):
         """Register a callback on a characteristic."""
 
         @callback
@@ -75,7 +75,7 @@ class PlejdBus:
             value = changed_props.get("Value", None)
             if not value:
                 return
-            callback(value.value)
+            c(value.value)
 
         self._chars[method + "_prop"].on_properties_changed(cb)
         await self._chars[method].call_start_notify()
@@ -106,8 +106,11 @@ class PlejdBus:
                 _LOGGER.debug(f"Discovered bluetooth adapter {path}")
                 return await self._get_interface(path, BLUEZ_ADAPTER_IFACE)
 
-    async def disconnect_devices(self):
-        """Disconnect all currently connected devices."""
+    async def connect_device(self, timeout):
+        """Disconnect all currently connected devices and connect to the closest plejd device."""
+        from dbus_next import Variant
+        from dbus_next.errors import DBusError
+
         om_objects = await self._om.call_get_managed_objects()
         for path, interfaces in om_objects.items():
             if BLUEZ_DEVICE_IFACE in interfaces.keys():
@@ -118,11 +121,6 @@ class PlejdBus:
                     await dev.call_disconnect()
                     _LOGGER.debug(f"Disconnected {path}")
                 await self._adapter.call_remove_device(path)
-
-    async def connect_device(self, timeout):
-        """Get all plejds and connect to the closest device."""
-        from dbus_next import Variant
-        from dbus_next.errors import DBusError
 
         plejds = []
 
@@ -234,7 +232,6 @@ class PlejdService:
         self._bus = PlejdBus(self._address)
         if not await self._bus.connect():
             return False
-        await self._bus.disconnect_devices()
         if not await self._bus.connect_device(pi["discovery_timeout"]):
             return False
 
@@ -338,12 +335,16 @@ class PlejdService:
 
         return True
 
-    async def ping(self, now):
-        """Send a ping and then schedule another in the future."""
+    async def request_update(self):
+        """Request an update of all devices."""
+        await self._bus.write_data("lightlevel", b"\x01")
+
+    async def check_connection(self, now=None):
+        """Send a ping and reconnect if it failed. Then schedule another check in the future."""
         if not await self._send_ping():
             await self.connect()
         self._remove_timer = async_track_point_in_utc_time(
-            self._hass, self.ping, dt_util.utcnow() + timedelta(seconds=300)
+            self._hass, self.check_connection, dt_util.utcnow() + timedelta(seconds=300)
         )
 
     async def _stop_plejd(self, event):
@@ -357,7 +358,7 @@ class PlejdService:
             challenge = await self._bus.read_data("auth")
             await self._bus.write_data("auth", _plejd_chalresp(key, challenge))
         except DBusError as e:
-            _LOGGER.warning(f"Plejd authentication errored: {e}")
+            _LOGGER.warning(f"Plejd authentication error: {e}")
             return False
         return True
 
@@ -369,7 +370,7 @@ class PlejdService:
             await self._bus.write_data("ping", ping)
             pong = await self._bus.read_data("ping")
         except DBusError as e:
-            _LOGGER.warning(f"Plejd ping errored: {e}")
+            _LOGGER.warning(f"Plejd ping error: {e}")
             return False
         if (ping[0] + 1) & 0xFF != pong[0]:
             _LOGGER.warning(f"Plejd ping failed {ping[0]:02x} - {pong[0]:02x}")
@@ -394,10 +395,6 @@ class PlejdService:
             await self.connect()
             data = _plejd_enc_dec(pi["key"], pi["address"], payload)
             await self._bus.write_data("data", data)
-
-    async def request_update(self):
-        """Request an update of all devices."""
-        await self._bus.write_data("lightlevel", b"\x01")
 
 
 def _plejd_chalresp(key, chal):

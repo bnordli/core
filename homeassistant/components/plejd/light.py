@@ -29,7 +29,6 @@ from homeassistant.core import callback
 from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.restore_state import RestoreEntity
-import homeassistant.util.dt as dt_util
 
 from .const import (
     CONF_CRYPTO_KEY,
@@ -173,7 +172,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     if not await service.connect():
         raise PlatformNotReady
 
-    await service.ping(dt_util.utcnow())
+    await service.check_connection()
     for identity, entity_info in config[CONF_DEVICES].items():
         i = int(identity)
         _LOGGER.debug(f"Adding device {i} ({entity_info[CONF_NAME]})")
