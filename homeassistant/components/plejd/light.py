@@ -21,6 +21,7 @@ import voluptuous as vol
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     COLOR_MODE_BRIGHTNESS,
+    COLOR_MODE_ONOFF,
     PLATFORM_SCHEMA,
     LightEntity,
 )
@@ -67,7 +68,6 @@ class PlejdLight(LightEntity, RestoreEntity):
         self._id = identity
         self._service = service
         self._brightness = None
-        self._attr_color_mode = COLOR_MODE_BRIGHTNESS
 
     async def async_added_to_hass(self):
         """Read the current state of the light when it is added to Home Assistant."""
@@ -76,8 +76,14 @@ class PlejdLight(LightEntity, RestoreEntity):
         if old is not None:
             self._state = old.state == STATE_ON
             if old.attributes.get(ATTR_BRIGHTNESS) is not None:
+                self._attr_supported_color_modes = {COLOR_MODE_BRIGHTNESS}
+                self._attr_color_mode = COLOR_MODE_BRIGHTNESS
                 brightness = int(old.attributes[ATTR_BRIGHTNESS])
                 self._brightness = brightness << 8 | brightness
+            else:
+                self._attr_supported_color_modes = {COLOR_MODE_ONOFF}
+                self._attr_color_mode = COLOR_MODE_ONOFF
+
         else:
             self._state = False
 
@@ -124,8 +130,12 @@ class PlejdLight(LightEntity, RestoreEntity):
             _LOGGER.debug(
                 f"{self._name} ({self._id}) turned {state} with brightness {brightness:04x}"
             )
+            self._attr_supported_color_modes = {COLOR_MODE_BRIGHTNESS}
+            self._attr_color_mode = COLOR_MODE_BRIGHTNESS
         else:
             _LOGGER.debug(f"{self._name} ({self._id}) turned {state}")
+            self._attr_supported_color_modes = {COLOR_MODE_ONOFF}
+            self._attr_color_mode = COLOR_MODE_ONOFF
         self.async_schedule_update_ha_state()
 
     async def async_turn_on(self, **kwargs):
