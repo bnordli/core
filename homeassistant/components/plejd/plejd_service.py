@@ -63,11 +63,11 @@ class PlejdBus:
         """Read data from one characteristic."""
         return await self._chars[char].call_read_value({})
 
-    async def add_callback(self, method, c):
+    async def add_callback(self, method, handler):
         """Register a callback on a characteristic."""
 
         @callback
-        def cb(iface, changed_props, invalidated_props):
+        def unwrap_value(iface, changed_props, invalidated_props):
             if iface != GATT_CHRC_IFACE:
                 return
             if not len(changed_props):
@@ -75,9 +75,9 @@ class PlejdBus:
             value = changed_props.get("Value", None)
             if not value:
                 return
-            c(value.value)
+            handler(value.value)
 
-        self._chars[method + "_prop"].on_properties_changed(cb)
+        self._chars[method + "_prop"].on_properties_changed(unwrap_value)
         await self._chars[method].call_start_notify()
 
     async def _get_interface(self, path, interface):
@@ -307,6 +307,7 @@ class PlejdService:
 
         @callback
         def handle_lightlevel_cb(value):
+            _LOGGER.debug(f"Received lightlevel {binascii.b2a_hex(value)}")
             # One or two messages of format
             # 0123456789
             # is???dd???

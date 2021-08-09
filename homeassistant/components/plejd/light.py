@@ -165,6 +165,9 @@ class PlejdLight(LightEntity, RestoreEntity):
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the Plejd light platform."""
+    if discovery_info is None:
+        return
+    _LOGGER.debug("Got config " + config)
     plejdinfo = {
         "key": binascii.a2b_hex(config.get(CONF_CRYPTO_KEY).replace("-", "")),
         "offset_minutes": config.get(CONF_OFFSET_MINUTES),
