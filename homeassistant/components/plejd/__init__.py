@@ -1,6 +1,8 @@
 """Plejd integration."""
 from __future__ import annotations
 
+import binascii
+
 import voluptuous as vol
 
 from homeassistant.const import CONF_LIGHTS, CONF_NAME
@@ -37,6 +39,7 @@ CONFIG_SCHEMA = vol.Schema(
             }
         )
     },
+    extra=vol.ALLOW_EXTRA,
 )
 
 
@@ -45,6 +48,13 @@ async def async_setup(hass, config):
     if DOMAIN not in config:
         return True
 
+    plejdinfo = {
+        "key": binascii.a2b_hex(config.get(CONF_CRYPTO_KEY).replace("-", "")),
+        "devices": {},
+        "config": config[DOMAIN],
+    }
+
+    hass.data[DOMAIN] = plejdinfo
     hass.helpers.discovery.load_platform("light", DOMAIN, {}, config)
 
     return True

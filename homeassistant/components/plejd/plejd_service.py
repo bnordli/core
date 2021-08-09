@@ -30,6 +30,8 @@ from .const import (
     BLUEZ_ADAPTER_IFACE,
     BLUEZ_DEVICE_IFACE,
     BLUEZ_SERVICE_NAME,
+    CONF_DISCOVERY_TIMEOUT,
+    CONF_OFFSET_MINUTES,
     DBUS_OM_IFACE,
     DBUS_PROP_IFACE,
     DOMAIN,
@@ -232,7 +234,7 @@ class PlejdService:
         self._bus = PlejdBus(self._address)
         if not await self._bus.connect():
             return False
-        if not await self._bus.connect_device(pi["discovery_timeout"]):
+        if not await self._bus.connect_device(pi["config"].get(CONF_DISCOVERY_TIMEOUT)):
             return False
 
         pi["address"] = await self._bus.get_plejd_address()
@@ -270,7 +272,7 @@ class PlejdService:
             elif dec[0] == 0x01 and dec[3:5] == b"\x00\x1b":
                 n = dt_util.now().replace(tzinfo=None)
                 time = datetime.fromtimestamp(struct.unpack_from("<I", dec, 5)[0])
-                n = n + timedelta(minutes=pi["offset_minutes"])
+                n = n + timedelta(minutes=pi["config"].get(CONF_OFFSET_MINUTES))
                 delta = abs(time - n)
                 _LOGGER.debug(f"Plejd network reports time as '{time}'")
                 s = delta.total_seconds()

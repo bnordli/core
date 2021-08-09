@@ -16,47 +16,21 @@
 import binascii
 import logging
 
-import voluptuous as vol
-
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     COLOR_MODE_BRIGHTNESS,
     COLOR_MODE_ONOFF,
-    PLATFORM_SCHEMA,
     LightEntity,
 )
-from homeassistant.const import CONF_DEVICES, CONF_NAME, STATE_ON
+from homeassistant.const import CONF_LIGHTS, CONF_NAME, STATE_ON
 from homeassistant.core import callback
 from homeassistant.exceptions import PlatformNotReady
-from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import (
-    CONF_CRYPTO_KEY,
-    CONF_DBUS_ADDRESS,
-    CONF_DISCOVERY_TIMEOUT,
-    CONF_OFFSET_MINUTES,
-    DEFAULT_DBUS_PATH,
-    DEFAULT_DISCOVERY_TIMEOUT,
-    DOMAIN,
-)
+from .const import CONF_DBUS_ADDRESS, DOMAIN
 from .plejd_service import PlejdService
 
 _LOGGER = logging.getLogger(__name__)
-
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
-    {
-        vol.Required(CONF_CRYPTO_KEY): cv.string,
-        vol.Required(CONF_DEVICES, default={}): {
-            cv.string: vol.Schema({vol.Required(CONF_NAME): cv.string})
-        },
-        vol.Optional(
-            CONF_DISCOVERY_TIMEOUT, default=DEFAULT_DISCOVERY_TIMEOUT
-        ): cv.positive_int,
-        vol.Optional(CONF_DBUS_ADDRESS, default=DEFAULT_DBUS_PATH): cv.string,
-        vol.Optional(CONF_OFFSET_MINUTES, default=0): int,
-    }
-)
 
 
 class PlejdLight(LightEntity, RestoreEntity):
@@ -167,22 +141,15 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     """Set up the Plejd light platform."""
     if discovery_info is None:
         return
-    _LOGGER.debug("Got config " + config)
-    plejdinfo = {
-        "key": binascii.a2b_hex(config.get(CONF_CRYPTO_KEY).replace("-", "")),
-        "offset_minutes": config.get(CONF_OFFSET_MINUTES),
-        "discovery_timeout": config[CONF_DISCOVERY_TIMEOUT],
-        "devices": {},
-    }
 
-    hass.data[DOMAIN] = plejdinfo
-    service = PlejdService(hass, config[CONF_DBUS_ADDRESS])
+    plejdinfo = hass.data[DOMAIN]
+    service = PlejdService(hass, plejdinfo["config"].get(CONF_DBUS_ADDRESS))
 
     if not await service.connect():
         raise PlatformNotReady
 
     await service.check_connection()
-    for identity, entity_info in config[CONF_DEVICES].items():
+    for identity, entity_info in plejdinfo["config"].get(CONF_LIGHTS).items():
         i = int(identity)
         _LOGGER.debug(f"Adding device {i} ({entity_info[CONF_NAME]})")
         plejdinfo["devices"][i] = PlejdLight(entity_info[CONF_NAME], i, service)
