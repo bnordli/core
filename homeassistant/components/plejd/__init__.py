@@ -6,6 +6,7 @@ import binascii
 import voluptuous as vol
 
 from homeassistant.const import CONF_LIGHTS, CONF_NAME
+from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
@@ -17,6 +18,7 @@ from .const import (
     DEFAULT_DISCOVERY_TIMEOUT,
     DOMAIN,
 )
+from .plejd_service import PlejdService
 
 # from homeassistant.core import HomeAssistant
 
@@ -53,8 +55,13 @@ async def async_setup(hass, config):
         "devices": {},
         "config": config[DOMAIN],
     }
-
     hass.data[DOMAIN] = plejdinfo
-    hass.helpers.discovery.load_platform("light", DOMAIN, {}, config)
 
+    service = PlejdService(hass, config[DOMAIN].get(CONF_DBUS_ADDRESS))
+    if not await service.connect():
+        raise PlatformNotReady
+    await service.check_connection()
+
+    plejdinfo["service"] = service
+    hass.helpers.discovery.load_platform("light", DOMAIN, {}, config)
     return True

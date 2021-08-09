@@ -24,11 +24,9 @@ from homeassistant.components.light import (
 )
 from homeassistant.const import CONF_LIGHTS, CONF_NAME, STATE_ON
 from homeassistant.core import callback
-from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import CONF_DBUS_ADDRESS, DOMAIN
-from .plejd_service import PlejdService
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -143,18 +141,14 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         return
 
     plejdinfo = hass.data[DOMAIN]
-    service = PlejdService(hass, plejdinfo["config"].get(CONF_DBUS_ADDRESS))
+    service = plejdinfo["service"]
 
-    if not await service.connect():
-        raise PlatformNotReady
-
-    await service.check_connection()
     for identity, entity_info in plejdinfo["config"].get(CONF_LIGHTS).items():
         i = int(identity)
-        _LOGGER.debug(f"Adding device {i} ({entity_info[CONF_NAME]})")
+        _LOGGER.debug(f"Adding light {i} ({entity_info[CONF_NAME]})")
         plejdinfo["devices"][i] = PlejdLight(entity_info[CONF_NAME], i, service)
 
     async_add_entities(plejdinfo["devices"].values())
 
     await service.request_update()
-    _LOGGER.debug("All plejd setup completed")
+    _LOGGER.debug("plejd light setup completed")
