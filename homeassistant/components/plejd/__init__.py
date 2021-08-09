@@ -5,7 +5,7 @@ import logging
 
 import voluptuous as vol
 
-from homeassistant.const import CONF_BINARY_SENSORS, CONF_LIGHTS, CONF_NAME
+from homeassistant.const import CONF_LIGHTS, CONF_NAME
 from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import config_validation as cv
 
@@ -35,9 +35,6 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Optional(CONF_DBUS_ADDRESS, default=DEFAULT_DBUS_PATH): cv.string,
                 vol.Optional(CONF_OFFSET_MINUTES, default=0): int,
                 vol.Optional(CONF_LIGHTS, default={}): {
-                    cv.string: vol.Schema({vol.Required(CONF_NAME): cv.string})
-                },
-                vol.Optional(CONF_BINARY_SENSORS, default={}): {
                     cv.string: vol.Schema({vol.Required(CONF_NAME): cv.string})
                 },
             }
