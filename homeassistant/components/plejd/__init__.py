@@ -51,7 +51,7 @@ async def async_setup(hass, config):
         return True
 
     plejdinfo = {
-        "key": binascii.a2b_hex(config.get(CONF_CRYPTO_KEY).replace("-", "")),
+        "key": binascii.a2b_hex(config[DOMAIN].get(CONF_CRYPTO_KEY).replace("-", "")),
         "devices": {},
         "config": config[DOMAIN],
     }
