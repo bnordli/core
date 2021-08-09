@@ -30,11 +30,12 @@ from .const import (
     BLUEZ_ADAPTER_IFACE,
     BLUEZ_DEVICE_IFACE,
     BLUEZ_SERVICE_NAME,
+    CONF_CRYPTO_KEY,
+    CONF_DBUS_ADDRESS,
     CONF_DISCOVERY_TIMEOUT,
     CONF_OFFSET_MINUTES,
     DBUS_OM_IFACE,
     DBUS_PROP_IFACE,
-    DOMAIN,
     GATT_CHRC_IFACE,
     GATT_SERVICE_IFACE,
     PLEJD_AUTH_UUID,
@@ -219,34 +220,36 @@ class PlejdBus:
 class PlejdService:
     """Representation of the Plejd service."""
 
-    def __init__(self, hass, address):
+    def __init__(self, hass, config, devices):
         """Initialize the service."""
         self._hass = hass
-        self._pi = hass.data[DOMAIN]
-        self._address = address
+        self._config = config
+        self._address = config.get(CONF_DBUS_ADDRESS)
+        self._key = binascii.a2b_hex(config.get(CONF_CRYPTO_KEY).replace("-", ""))
+        self._devices = devices
+        self._plejd_address = None
         self._bus = None
         self._remove_timer = lambda: ()
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._stop_plejd)
 
     async def connect(self):
         """Connect to the Plejd service."""
-        pi = self._pi
         self._bus = PlejdBus(self._address)
         if not await self._bus.connect():
             return False
-        if not await self._bus.connect_device(pi["config"].get(CONF_DISCOVERY_TIMEOUT)):
+        if not await self._bus.connect_device(self._config.get(CONF_DISCOVERY_TIMEOUT)):
             return False
 
-        pi["address"] = await self._bus.get_plejd_address()
-        if not pi["address"]:
+        self._plejd_address = await self._bus.get_plejd_address()
+        if not self._plejd_address:
             _LOGGER.warning("Failed connecting to plejd service")
             return False
-        if not await self._authenticate(pi["key"]):
+        if not await self._authenticate():
             return False
 
         @callback
         def handle_notification_cb(value):
-            dec = _plejd_enc_dec(pi["key"], pi["address"], value)
+            dec = self._enc_dec(value)
             _LOGGER.debug(f"Received command {binascii.b2a_hex(dec)}")
 
             # Format
@@ -267,12 +270,12 @@ class PlejdService:
             # d = data
 
             # check if this is a device we care about
-            if dec[0] in pi["devices"]:
-                device = pi["devices"][dec[0]]
+            if dec[0] in self._devices:
+                device = self._devices[dec[0]]
             elif dec[0] == 0x01 and dec[3:5] == b"\x00\x1b":
                 n = dt_util.now().replace(tzinfo=None)
                 time = datetime.fromtimestamp(struct.unpack_from("<I", dec, 5)[0])
-                n = n + timedelta(minutes=pi["config"].get(CONF_OFFSET_MINUTES))
+                n = n + timedelta(minutes=self._config.get(CONF_OFFSET_MINUTES))
                 delta = abs(time - n)
                 _LOGGER.debug(f"Plejd network reports time as '{time}'")
                 s = delta.total_seconds()
@@ -308,8 +311,8 @@ class PlejdService:
             device.update_state(bool(state), dim)
 
         @callback
-        def handle_lightlevel_cb(value):
-            _LOGGER.debug(f"Received lightlevel {binascii.b2a_hex(value)}")
+        def handle_state_cb(value):
+            _LOGGER.debug(f"Received state {binascii.b2a_hex(value)}")
             # One or two messages of format
             # 0123456789
             # is???dd???
@@ -317,9 +320,8 @@ class PlejdService:
             # s = state (0 or 1)
             # d = brightness
             if len(value) != 20 and len(value) != 10:
-                lightlevel = binascii.b2a_hex(value)
-                _LOGGER.debug(
-                    f"Unknown length data received for lightlevel: '{lightlevel}'"
+                _LOGGER.warning(
+                    f"Unknown length data received for state: '{binascii.b2a_hex(value)}'"
                 )
                 return
 
@@ -328,13 +330,13 @@ class PlejdService:
                 msgs.append(value[10:20])
 
             for m in msgs:
-                if m[0] not in pi["devices"]:
+                if m[0] not in self._devices:
                     continue
-                device = pi["devices"][m[0]]
+                device = self._devices[m[0]]
                 device.update_state(bool(m[1]), int.from_bytes(m[5:7], "little"))
 
         await self._bus.add_callback("last_data", handle_notification_cb)
-        await self._bus.add_callback("lightlevel", handle_lightlevel_cb)
+        await self._bus.add_callback("lightlevel", handle_state_cb)
 
         return True
 
@@ -353,13 +355,13 @@ class PlejdService:
     async def _stop_plejd(self, event):
         self._remove_timer()
 
-    async def _authenticate(self, key):
+    async def _authenticate(self):
         from dbus_next.errors import DBusError
 
         try:
             await self._bus.write_data("auth", b"\x00")
             challenge = await self._bus.read_data("auth")
-            await self._bus.write_data("auth", _plejd_chalresp(key, challenge))
+            await self._bus.write_data("auth", self._chalresp(challenge))
         except DBusError as e:
             _LOGGER.warning(f"Plejd authentication error: {e}")
             return False
@@ -385,49 +387,46 @@ class PlejdService:
     async def _write(self, payload):
         from dbus_next.errors import DBusError
 
-        pi = self._pi
         if not self._bus:
             _LOGGER.warning("Tried to write to plejd when not connected")
             return
 
         try:
-            data = _plejd_enc_dec(pi["key"], pi["address"], payload)
+            data = self._enc_dec(payload)
             await self._bus.write_data("data", data)
         except DBusError as e:
             _LOGGER.warning(f"Write failed, reconnecting: '{e}'")
             await self.connect()
-            data = _plejd_enc_dec(pi["key"], pi["address"], payload)
+            data = self._enc_dec(payload)
             await self._bus.write_data("data", data)
 
+    def _chalresp(self, chal):
+        import hashlib
 
-def _plejd_chalresp(key, chal):
-    import hashlib
+        k = int.from_bytes(self._key, "big")
+        c = int.from_bytes(chal, "big")
 
-    k = int.from_bytes(key, "big")
-    c = int.from_bytes(chal, "big")
+        intermediate = hashlib.sha256((k ^ c).to_bytes(16, "big")).digest()
+        part1 = int.from_bytes(intermediate[:16], "big")
+        part2 = int.from_bytes(intermediate[16:], "big")
+        resp = (part1 ^ part2).to_bytes(16, "big")
+        return resp
 
-    intermediate = hashlib.sha256((k ^ c).to_bytes(16, "big")).digest()
-    part1 = int.from_bytes(intermediate[:16], "big")
-    part2 = int.from_bytes(intermediate[16:], "big")
-    resp = (part1 ^ part2).to_bytes(16, "big")
-    return resp
+    def _enc_dec(self, data):
+        from cryptography.hazmat.backends import default_backend
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
+        buf = bytearray(self._plejd_address * 2)
+        buf += self._plejd_address[:4]
 
-def _plejd_enc_dec(key, addr, data):
-    from cryptography.hazmat.backends import default_backend
-    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        ct = (
+            Cipher(algorithms.AES(self._key), modes.ECB(), backend=default_backend())
+            .encryptor()
+            .update(buf)
+        )
 
-    buf = bytearray(addr * 2)
-    buf += addr[:4]
+        output = b""
+        for i in range(len(data)):
+            output += struct.pack("B", data[i] ^ ct[i % 16])
 
-    ct = (
-        Cipher(algorithms.AES(key), modes.ECB(), backend=default_backend())
-        .encryptor()
-        .update(buf)
-    )
-
-    output = b""
-    for i in range(len(data)):
-        output += struct.pack("B", data[i] ^ ct[i % 16])
-
-    return output
+        return output

@@ -1,11 +1,11 @@
 """Plejd integration."""
 from __future__ import annotations
 
-import binascii
+import logging
 
 import voluptuous as vol
 
-from homeassistant.const import CONF_LIGHTS, CONF_NAME
+from homeassistant.const import CONF_BINARY_SENSORS, CONF_LIGHTS, CONF_NAME
 from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import config_validation as cv
 
@@ -20,8 +20,7 @@ from .const import (
 )
 from .plejd_service import PlejdService
 
-# from homeassistant.core import HomeAssistant
-
+_LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["light"]
 
@@ -35,7 +34,10 @@ CONFIG_SCHEMA = vol.Schema(
                 ): cv.positive_int,
                 vol.Optional(CONF_DBUS_ADDRESS, default=DEFAULT_DBUS_PATH): cv.string,
                 vol.Optional(CONF_OFFSET_MINUTES, default=0): int,
-                vol.Required(CONF_LIGHTS, default={}): {
+                vol.Optional(CONF_LIGHTS, default={}): {
+                    cv.string: vol.Schema({vol.Required(CONF_NAME): cv.string})
+                },
+                vol.Optional(CONF_BINARY_SENSORS, default={}): {
                     cv.string: vol.Schema({vol.Required(CONF_NAME): cv.string})
                 },
             }
@@ -50,18 +52,20 @@ async def async_setup(hass, config):
     if DOMAIN not in config:
         return True
 
+    plejdconfig = config[DOMAIN]
+    devices = {}
+    service = PlejdService(hass, plejdconfig, devices)
     plejdinfo = {
-        "key": binascii.a2b_hex(config[DOMAIN].get(CONF_CRYPTO_KEY).replace("-", "")),
-        "devices": {},
-        "config": config[DOMAIN],
+        "config": plejdconfig,
+        "devices": devices,
+        "service": service,
     }
     hass.data[DOMAIN] = plejdinfo
+    hass.helpers.discovery.load_platform("light", DOMAIN, {}, config)
 
-    service = PlejdService(hass, config[DOMAIN].get(CONF_DBUS_ADDRESS))
     if not await service.connect():
         raise PlatformNotReady
     await service.check_connection()
-
-    plejdinfo["service"] = service
-    hass.helpers.discovery.load_platform("light", DOMAIN, {}, config)
+    _LOGGER.debug("Plejd platform setup completed")
+    hass.async_create_task(service.request_update())
     return True

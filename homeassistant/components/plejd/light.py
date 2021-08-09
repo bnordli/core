@@ -135,20 +135,20 @@ class PlejdLight(LightEntity, RestoreEntity):
         await self._service._write(payload)
 
 
-async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
+def setup_platform(hass, config, add_entities, discovery_info=None):
     """Set up the Plejd light platform."""
     if discovery_info is None:
         return
 
     plejdinfo = hass.data[DOMAIN]
     service = plejdinfo["service"]
+    lights = []
 
     for identity, entity_info in plejdinfo["config"].get(CONF_LIGHTS).items():
         i = int(identity)
         _LOGGER.debug(f"Adding light {i} ({entity_info[CONF_NAME]})")
-        plejdinfo["devices"][i] = PlejdLight(entity_info[CONF_NAME], i, service)
+        light = PlejdLight(entity_info[CONF_NAME], i, service)
+        plejdinfo["devices"][i] = light
+        lights.append(light)
 
-    async_add_entities(plejdinfo["devices"].values())
-
-    await service.request_update()
-    _LOGGER.debug("plejd light setup completed")
+    add_entities(lights)
