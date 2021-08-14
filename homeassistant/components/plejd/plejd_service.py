@@ -250,29 +250,28 @@ class PlejdService:
         @callback
         def handle_notification_cb(value):
             dec = self._enc_dec(value)
-            _LOGGER.debug(f"Received command {binascii.b2a_hex(dec)}")
-
+            _LOGGER.debug(f"Received message {binascii.b2a_hex(dec)}")
             # Format
             # 012345...
-            # irrccdddd
+            # i..ccdddd
             # i = device_id
-            #     0 = broadcast
-            #     1 = broadcast time
-            #     2 = scenes
-            #     3... id
-            # r = read?
+            #     00: button broadcast
+            #     01: time broadcast
+            #     02: scene broadcast
             # c = command
             #     001b: time
-            #     0016: button push, data = button + unknown
+            #     0016: button push, data = id + button + unknown
             #     0021: set scene, data = scene id
             #     0097: state update, data = state, dim
-            #     00c8, 0098: state/dim update
+            #     00c8, 0098: state + dim update
             # d = data
-
-            # check if this is a device we care about
-            if dec[0] in self._devices:
-                device = self._devices[dec[0]]
-            elif dec[0] == 0x01 and dec[3:5] == b"\x00\x1b":
+            id = dec[0]
+            command = dec[3:5]
+            if command == b"\x00\x1b":
+                # 001b: time
+                if id != 0x01:
+                    # Disregard time updates sent from the app
+                    return
                 n = dt_util.now().replace(tzinfo=None)
                 time = datetime.fromtimestamp(struct.unpack_from("<I", dec, 5)[0])
                 n = n + timedelta(minutes=self._config.get(CONF_OFFSET_MINUTES))
@@ -286,29 +285,31 @@ class PlejdService:
                     ntime = b"\x00\x01\x10\x00\x1b"
                     ntime += struct.pack("<I", int(n.timestamp())) + b"\x00"
                     self._hass.async_create_task(self._write(ntime))
+            elif command == b"\x00\x16":
+                # 0016: button push
                 return
-            else:
-                _LOGGER.debug(
-                    f"No match for device '{dec[0]:02x}' ({binascii.b2a_hex(dec)})"
-                )
+            elif command == b"\x00\x16":
+                # 0021: scene set
                 return
-            dim = None
-            state = None
-            if dec[3:5] == b"\x00\xc8" or dec[3:5] == b"\x00\x98":
-                # 00c8 and 0098 both mean state+dim
-                state = dec[5]
+            elif command == b"\x00\x97":
+                # 0097: state update
+                device = self._devices[id]
+                if device is None:
+                    _LOGGER.debug(f"No match for device '{id:02x}'")
+                    return
+                state = bool(dec[5])
+                device.update_state(state, None)
+            elif command == b"\x00\xc8" or command == b"\x00\x98":
+                # 00c8, 0098: state + dim update
+                device = self._devices[id]
+                if device is None:
+                    _LOGGER.debug(f"No match for device '{id:02x}'")
+                    return
+                state = bool(dec[5])
                 dim = int.from_bytes(dec[6:8], "little")
-            elif dec[3:5] == b"\x00\x97":
-                # 0097 is state only
-                state = dec[5]
+                device.update_state(state, dim)
             else:
-                _LOGGER.debug(
-                    "No match for command '%s' (%s)"
-                    % (binascii.b2a_hex(dec[3:5]), binascii.b2a_hex(dec))
-                )
-                return
-
-            device.update_state(bool(state), dim)
+                _LOGGER.debug(f"No match for command '{binascii.b2a_hex(command)}'")
 
         @callback
         def handle_state_cb(value):

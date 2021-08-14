@@ -22,6 +22,7 @@ from .const import (
     CONF_DBUS_ADDRESS,
     CONF_DISCOVERY_TIMEOUT,
     CONF_OFFSET_MINUTES,
+    CONF_SCENES,
     DEFAULT_DBUS_PATH,
     DEFAULT_DISCOVERY_TIMEOUT,
     DOMAIN,
@@ -65,6 +66,7 @@ CONFIG_SCHEMA = vol.Schema(
                         }
                     )
                 },
+                vol.Optional(CONF_SCENES, default={}): {cv.positive_int: cv.string},
             }
         )
     },

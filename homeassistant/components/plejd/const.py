@@ -6,6 +6,7 @@ CONF_CRYPTO_KEY = "crypto_key"
 CONF_DISCOVERY_TIMEOUT = "discovery_timeout"
 CONF_DBUS_ADDRESS = "dbus_address"
 CONF_OFFSET_MINUTES = "offset_minutes"
+CONF_SCENES = "scenes"
 
 DEFAULT_DISCOVERY_TIMEOUT = 2
 DEFAULT_DBUS_PATH = "unix:path=/run/dbus/system_bus_socket"
