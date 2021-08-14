@@ -15,8 +15,8 @@
 
 import logging
 
-from homeassistant.components.binary_sensor import BinarySensorEntity
-from homeassistant.const import CONF_BINARY_SENSORS, CONF_DEVICES, STATE_ON
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.const import CONF_DEVICES, CONF_SENSORS
 from homeassistant.core import callback
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -25,23 +25,24 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
-class PlejdButton(BinarySensorEntity, RestoreEntity):
-    """Representation of a Plejd button."""
+class PlejdRotaryButton(SensorEntity, RestoreEntity):
+    """Representation of a Plejd rotaty button."""
 
     def __init__(self, name, identity, service):
-        """Initialize the binary sensor."""
+        """Initialize the sensor."""
         self._name = name
         self._id = identity
         self._service = service
+        self._attr_state = 0.0
 
     async def async_added_to_hass(self):
         """Read the current state of the button when it is added to Home Assistant."""
         await super().async_added_to_hass()
         old = await self.async_get_last_state()
         if old is not None:
-            self._state = old.state == STATE_ON
+            self._attr_state = old.state
         else:
-            self._state = False
+            self._state = 0.0
 
     @property
     def should_poll(self):
@@ -52,11 +53,6 @@ class PlejdButton(BinarySensorEntity, RestoreEntity):
     def name(self):
         """Return the name of this button."""
         return self._name
-
-    @property
-    def is_on(self):
-        """Return whether this button is on."""
-        return self._state
 
     @property
     def assumed_state(self):
@@ -71,14 +67,16 @@ class PlejdButton(BinarySensorEntity, RestoreEntity):
     @callback
     def update_state(self, state, brightness=None):
         """Update the state of the button."""
-        self._state = state
-        state = "on" if state else "off"
-        _LOGGER.debug(f"{self._name} ({self._id}) turned {state}")
-        self.async_schedule_update_ha_state()
+        if brightness is not None:
+            self._attr_state = 0xFFFF / brightness
+            _LOGGER.debug(
+                f"{self._name} ({self._id}) turned to brightness {self._attr_state}"
+            )
+            self.async_schedule_update_ha_state()
 
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
-    """Set up the Plejd binary sensor platform."""
+    """Set up the Plejd sensor platform."""
     if discovery_info is None:
         return
 
@@ -87,13 +85,13 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
     buttons = []
 
     for device_info in plejdinfo["config"].get(CONF_DEVICES).values():
-        for identity, sensor_name in device_info[CONF_BINARY_SENSORS].items():
+        for identity, sensor_name in device_info[CONF_SENSORS].items():
             i = int(identity)
             if i in plejdinfo["devices"]:
                 _LOGGER.warning(f"Found duplicate definition for Plejd device {i}.")
                 continue
-            _LOGGER.debug(f"Adding binary sensor {i} ({sensor_name})")
-            button = PlejdButton(sensor_name, i, service)
+            _LOGGER.debug(f"Adding sensor {i} ({sensor_name})")
+            button = PlejdRotaryButton(sensor_name, i, service)
             plejdinfo["devices"][i] = button
             buttons.append(button)
 
