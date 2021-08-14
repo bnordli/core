@@ -222,13 +222,14 @@ class PlejdBus:
 class PlejdService:
     """Representation of the Plejd service."""
 
-    def __init__(self, hass, config, devices):
+    def __init__(self, hass, config, devices, scenes):
         """Initialize the service."""
         self._hass = hass
         self._config = config
         self._address = config.get(CONF_DBUS_ADDRESS)
         self._key = binascii.a2b_hex(config.get(CONF_CRYPTO_KEY).replace("-", ""))
         self._devices = devices
+        self._scenes = scenes
         self._plejd_address = None
         self._bus = None
         self._remove_timer = lambda: ()
@@ -291,14 +292,24 @@ class PlejdService:
                 # 0016: button click
                 id = dec[5]
                 button = dec[6]
-                self._hass.fire(
-                    BUTTON_CLICKED_EVENT, {"device": id, "button: ": button}
-                )
+                data = {
+                    "device": id,
+                    "button": button,
+                    "position": "right" if button % 2 else "left",
+                    "state": "on" if button < 2 else "off",
+                }
+                # This will pick the name of the left button
+                if id in self._devices:
+                    data["name"] = self._devices[id].name
+                self._hass.bus.fire(BUTTON_CLICKED_EVENT, data)
                 return
-            elif command == b"\x00\x16":
+            elif command == b"\x00\x21":
                 # 0021: scene set
                 id = dec[5]
-                self._hass.fire(SCENE_TRIGGERED_EVENT, {"scene": id})
+                data = {"scene": id}
+                if id in self._scenes:
+                    data["name"] = self._scenes[id]
+                self._hass.bus.fire(SCENE_TRIGGERED_EVENT, data)
                 return
             elif command == b"\x00\x97":
                 # 0097: state update

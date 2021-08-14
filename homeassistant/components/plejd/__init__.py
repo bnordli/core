@@ -82,11 +82,13 @@ async def async_setup(hass, config):
     plejdconfig = config[DOMAIN]
 
     devices = {}
-    service = PlejdService(hass, plejdconfig, devices)
+    scenes = plejdconfig[CONF_SCENES]
+    service = PlejdService(hass, plejdconfig, devices, scenes)
     plejdinfo = {
         "config": plejdconfig,
         "devices": devices,
         "service": service,
+        "scenes": scenes,
     }
     hass.data[DOMAIN] = plejdinfo
     for platform in PLATFORMS:
