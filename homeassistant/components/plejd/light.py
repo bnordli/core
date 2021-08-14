@@ -34,10 +34,13 @@ _LOGGER = logging.getLogger(__name__)
 class PlejdLight(LightEntity, RestoreEntity):
     """Representation of a Plejd light."""
 
+    _attr_should_poll = False
+    _attr_assumed_state = False
+
     def __init__(self, name, identity, service):
         """Initialize the light."""
-        self._name = name
-        self._id = identity
+        self._attr_name = name
+        self._attr_unique_id = identity
         self._service = service
         self._brightness = None
 
@@ -46,7 +49,7 @@ class PlejdLight(LightEntity, RestoreEntity):
         await super().async_added_to_hass()
         old = await self.async_get_last_state()
         if old is not None:
-            self._state = old.state == STATE_ON
+            self._attr_is_on = old.state == STATE_ON
             if old.attributes.get(ATTR_BRIGHTNESS) is not None:
                 self._attr_supported_color_modes = {COLOR_MODE_BRIGHTNESS}
                 self._attr_color_mode = COLOR_MODE_BRIGHTNESS
@@ -55,29 +58,8 @@ class PlejdLight(LightEntity, RestoreEntity):
             else:
                 self._attr_supported_color_modes = {COLOR_MODE_ONOFF}
                 self._attr_color_mode = COLOR_MODE_ONOFF
-
         else:
-            self._state = False
-
-    @property
-    def should_poll(self):
-        """Plejd lights should never be polled."""
-        return False
-
-    @property
-    def name(self):
-        """Return the name of this light."""
-        return self._name
-
-    @property
-    def is_on(self):
-        """Return whether this light is on."""
-        return self._state
-
-    @property
-    def assumed_state(self):
-        """Plejd light status are pushed to HA."""
-        return False
+            self._attr_is_on = False
 
     @property
     def brightness(self):
@@ -87,25 +69,19 @@ class PlejdLight(LightEntity, RestoreEntity):
         else:
             return None
 
-    @property
-    def unique_id(self):
-        """Return the unique ID of this light."""
-        return self._id
-
     @callback
     def update_state(self, state, brightness=None):
         """Update the state of the light."""
-        self._state = state
+        self._attr_is_on = state
         self._brightness = brightness
-        state = "on" if state else "off"
         if brightness:
             _LOGGER.debug(
-                f"{self._name} ({self._id}) turned {state} with brightness {brightness:04x}"
+                f"{self.name} ({self.unique_id}) turned {self.state} with brightness {brightness:04x}"
             )
             self._attr_supported_color_modes = {COLOR_MODE_BRIGHTNESS}
             self._attr_color_mode = COLOR_MODE_BRIGHTNESS
         else:
-            _LOGGER.debug(f"{self._name} ({self._id}) turned {state}")
+            _LOGGER.debug(f"{self.name} ({self.unique_id}) turned {self.state}")
             self._attr_supported_color_modes = {COLOR_MODE_ONOFF}
             self._attr_color_mode = COLOR_MODE_ONOFF
         self.async_schedule_update_ha_state()
@@ -115,23 +91,23 @@ class PlejdLight(LightEntity, RestoreEntity):
         brightness = kwargs.get(ATTR_BRIGHTNESS)
         if brightness is None:
             self._brightness = None
-            payload = binascii.a2b_hex(f"{self._id:02x}0110009701")
+            payload = binascii.a2b_hex(f"{self.unique_id:02x}0110009701")
         else:
             # since ha brightness is just one byte we shift it up and or it in to be able to get max val
             self._brightness = brightness << 8 | brightness
             payload = binascii.a2b_hex(
-                f"{self._id:02x}0110009801{self._brightness:04x}"
+                f"{self.unique_id:02x}0110009801{self._brightness:04x}"
             )
 
         _LOGGER.debug(
-            f"Turning on {self._name} ({self._id}) with brightness {brightness or 0:02x}"
+            f"Turning on {self.name} ({self.unique_id}) with brightness {brightness or 0:02x}"
         )
         await self._service._write(payload)
 
     async def async_turn_off(self, **kwargs):
         """Turn the light off."""
-        payload = binascii.a2b_hex(f"{self._id:02x}0110009700")
-        _LOGGER.debug(f"Turning off {self._name} ({self._id})")
+        payload = binascii.a2b_hex(f"{self.unique_id:02x}0110009700")
+        _LOGGER.debug(f"Turning off {self.name} ({self.unique_id})")
         await self._service._write(payload)
 
 

@@ -28,15 +28,16 @@ _LOGGER = logging.getLogger(__name__)
 class PlejdRotaryButton(SensorEntity, RestoreEntity):
     """Representation of a Plejd rotaty button."""
 
-    _attr_unit_of_measurement = PERCENTAGE
+    _attr_assumed_state = False
+    _attr_should_poll = False
     _attr_state_class = STATE_CLASS_MEASUREMENT
+    _attr_unit_of_measurement = PERCENTAGE
 
     def __init__(self, name, identity, service):
         """Initialize the sensor."""
-        self._name = name
-        self._id = identity
+        self._attr_name = name
+        self._attr_unique_id = identity
         self._service = service
-        self._attr_state = 0
 
     async def async_added_to_hass(self):
         """Read the current state of the button when it is added to Home Assistant."""
@@ -44,28 +45,6 @@ class PlejdRotaryButton(SensorEntity, RestoreEntity):
         old = await self.async_get_last_state()
         if old is not None:
             self._attr_state = old.state
-        else:
-            self._state = 0
-
-    @property
-    def should_poll(self):
-        """Plejd buttons should never be polled."""
-        return False
-
-    @property
-    def name(self):
-        """Return the name of this button."""
-        return self._name
-
-    @property
-    def assumed_state(self):
-        """Plejd button status are pushed to HA."""
-        return False
-
-    @property
-    def unique_id(self):
-        """Return the unique ID of this button."""
-        return self._id
 
     @callback
     def update_state(self, state, brightness=None):
@@ -73,7 +52,7 @@ class PlejdRotaryButton(SensorEntity, RestoreEntity):
         if brightness is not None:
             self._attr_state = int(round(100 * (brightness / 0xFFFF)))
             _LOGGER.debug(
-                f"{self._name} ({self._id}) turned to brightness {self._attr_state}"
+                f"{self.name} ({self.unique_id}) turned to brightness {self.state}"
             )
             self.async_schedule_update_ha_state()
 

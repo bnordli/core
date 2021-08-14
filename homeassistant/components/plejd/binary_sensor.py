@@ -28,10 +28,13 @@ _LOGGER = logging.getLogger(__name__)
 class PlejdButton(BinarySensorEntity, RestoreEntity):
     """Representation of a Plejd button."""
 
+    _attr_should_poll = False
+    _attr_assumed_state = False
+
     def __init__(self, name, identity, service):
         """Initialize the binary sensor."""
-        self._name = name
-        self._id = identity
+        self._attr_name = name
+        self._attr_unique_id = identity
         self._service = service
 
     async def async_added_to_hass(self):
@@ -39,41 +42,13 @@ class PlejdButton(BinarySensorEntity, RestoreEntity):
         await super().async_added_to_hass()
         old = await self.async_get_last_state()
         if old is not None:
-            self._state = old.state == STATE_ON
-        else:
-            self._state = False
-
-    @property
-    def should_poll(self):
-        """Plejd buttons should never be polled."""
-        return False
-
-    @property
-    def name(self):
-        """Return the name of this button."""
-        return self._name
-
-    @property
-    def is_on(self):
-        """Return whether this button is on."""
-        return self._state
-
-    @property
-    def assumed_state(self):
-        """Plejd button status are pushed to HA."""
-        return False
-
-    @property
-    def unique_id(self):
-        """Return the unique ID of this button."""
-        return self._id
+            self._attr_is_on = old.state == STATE_ON
 
     @callback
     def update_state(self, state, brightness=None):
         """Update the state of the button."""
-        self._state = state
-        state = "on" if state else "off"
-        _LOGGER.debug(f"{self._name} ({self._id}) turned {state}")
+        self._attr_is_on = state
+        _LOGGER.debug(f"{self.name} ({self.unique_id}) turned {self.state}")
         self.async_schedule_update_ha_state()
 
 

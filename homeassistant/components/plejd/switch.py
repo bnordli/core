@@ -29,10 +29,13 @@ _LOGGER = logging.getLogger(__name__)
 class PlejdSwitch(SwitchEntity, RestoreEntity):
     """Representation of a Plejd switch."""
 
+    _attr_should_poll = False
+    _attr_assumed_state = False
+
     def __init__(self, name, identity, service):
         """Initialize the switch."""
-        self._name = name
-        self._id = identity
+        self._attr_name = name
+        self._attr_unique_id = identity
         self._service = service
         self._brightness = None
 
@@ -41,53 +44,25 @@ class PlejdSwitch(SwitchEntity, RestoreEntity):
         await super().async_added_to_hass()
         old = await self.async_get_last_state()
         if old is not None:
-            self._state = old.state == STATE_ON
-        else:
-            self._state = False
-
-    @property
-    def should_poll(self):
-        """Plejd switches should never be polled."""
-        return False
-
-    @property
-    def name(self):
-        """Return the name of this switch."""
-        return self._name
-
-    @property
-    def is_on(self):
-        """Return whether this switch is on."""
-        return self._state
-
-    @property
-    def assumed_state(self):
-        """Plejd switch status are pushed to HA."""
-        return False
-
-    @property
-    def unique_id(self):
-        """Return the unique ID of this switch."""
-        return self._id
+            self._attr_state = old.state == STATE_ON
 
     @callback
     def update_state(self, state, brightness=None):
         """Update the state of the switch."""
-        self._state = state
-        state = "on" if state else "off"
-        _LOGGER.debug(f"{self._name} ({self._id}) turned {state}")
+        self._attr_state = state
+        _LOGGER.debug(f"{self.name} ({self.unique_id}) turned {self.state}")
         self.async_schedule_update_ha_state()
 
     async def async_turn_on(self, **kwargs):
         """Turn the switch on."""
         payload = binascii.a2b_hex(f"{self._id:02x}0110009701")
-        _LOGGER.debug(f"Turning on {self._name} ({self._id})")
+        _LOGGER.debug(f"Turning on {self.name} ({self.unique_id})")
         await self._service._write(payload)
 
     async def async_turn_off(self, **kwargs):
         """Turn the switch off."""
         payload = binascii.a2b_hex(f"{self._id:02x}0110009700")
-        _LOGGER.debug(f"Turning off {self._name} ({self._id})")
+        _LOGGER.debug(f"Turning off {self.name} ({self.unique_id})")
         await self._service._write(payload)
 
 
