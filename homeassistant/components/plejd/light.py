@@ -28,6 +28,7 @@ from homeassistant.const import (
     ATTR_MODEL,
     ATTR_NAME,
     CONF_DEVICES,
+    CONF_LIGHTS,
     CONF_NAME,
     CONF_TYPE,
     STATE_ON,
@@ -47,7 +48,7 @@ class PlejdLight(LightEntity, RestoreEntity):
         """Initialize the light."""
         self._name = name
         self._id = identity
-        self._device = device
+        self._attr_device_info = device
         self._service = service
         self._brightness = None
 
@@ -72,7 +73,8 @@ class PlejdLight(LightEntity, RestoreEntity):
     @property
     def device_info(self):
         """Return a device description for device registry."""
-        return self._device
+        _LOGGER.debug("Asked for device")
+        return super().device_info()
 
     @property
     def should_poll(self):
@@ -161,7 +163,7 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
 
     for device_id, device_info in plejdinfo["config"].get(CONF_DEVICES).items():
         device = make_device(device_id, device_info)
-        for identity, light_name in device_info.items():
+        for identity, light_name in device_info[CONF_LIGHTS].items():
             i = int(identity)
             if i in plejdinfo["devices"]:
                 _LOGGER.warning(f"Found duplicate definition for Plejd device {i}.")

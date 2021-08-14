@@ -1,7 +1,6 @@
 """Plejd integration."""
 from __future__ import annotations
 
-import json
 import logging
 
 import voluptuous as vol
@@ -79,7 +78,6 @@ async def async_setup(hass, config):
         return True
 
     plejdconfig = config[DOMAIN]
-    _LOGGER.debug("Config: " + json.dumps(plejdconfig, indent=2))
 
     devices = {}
     service = PlejdService(hass, plejdconfig, devices)
