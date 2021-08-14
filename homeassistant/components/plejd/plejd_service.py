@@ -30,6 +30,7 @@ from .const import (
     BLUEZ_ADAPTER_IFACE,
     BLUEZ_DEVICE_IFACE,
     BLUEZ_SERVICE_NAME,
+    BUTTON_CLICKED_EVENT,
     CONF_CRYPTO_KEY,
     CONF_DBUS_ADDRESS,
     CONF_DISCOVERY_TIMEOUT,
@@ -44,6 +45,7 @@ from .const import (
     PLEJD_LIGHTLEVEL_UUID,
     PLEJD_PING_UUID,
     PLEJD_SVC_UUID,
+    SCENE_TRIGGERED_EVENT,
     TIME_DELTA_SYNC,
 )
 
@@ -260,7 +262,7 @@ class PlejdService:
             #     02: scene broadcast
             # c = command
             #     001b: time
-            #     0016: button push, data = id + button + unknown
+            #     0016: button click, data = id + button + unknown
             #     0021: set scene, data = scene id
             #     0097: state update, data = state, dim
             #     00c8, 0098: state + dim update
@@ -286,10 +288,17 @@ class PlejdService:
                     ntime += struct.pack("<I", int(n.timestamp())) + b"\x00"
                     self._hass.async_create_task(self._write(ntime))
             elif command == b"\x00\x16":
-                # 0016: button push
+                # 0016: button click
+                id = dec[5]
+                button = dec[6]
+                self._hass.fire(
+                    BUTTON_CLICKED_EVENT, {"device": id, "button: ": button}
+                )
                 return
             elif command == b"\x00\x16":
                 # 0021: scene set
+                id = dec[5]
+                self._hass.fire(SCENE_TRIGGERED_EVENT, {"scene": id})
                 return
             elif command == b"\x00\x97":
                 # 0097: state update
