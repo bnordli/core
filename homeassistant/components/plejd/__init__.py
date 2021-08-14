@@ -87,6 +87,7 @@ async def async_setup(hass, config):
         "service": service,
     }
     hass.data[DOMAIN] = plejdinfo
+    hass.helpers.discovery.load_platform("binary_sensor", DOMAIN, {}, config)
     hass.helpers.discovery.load_platform("light", DOMAIN, {}, config)
 
     if not await service.connect():
