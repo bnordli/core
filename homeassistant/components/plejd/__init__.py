@@ -30,7 +30,7 @@ from .plejd_service import PlejdService
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["light"]
+PLATFORMS = ["binary_sensor", "light", "sensor", "switch"]
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -87,9 +87,8 @@ async def async_setup(hass, config):
         "service": service,
     }
     hass.data[DOMAIN] = plejdinfo
-    hass.helpers.discovery.load_platform("binary_sensor", DOMAIN, {}, config)
-    hass.helpers.discovery.load_platform("light", DOMAIN, {}, config)
-    hass.helpers.discovery.load_platform("sensor", DOMAIN, {}, config)
+    for platform in PLATFORMS:
+        hass.helpers.discovery.load_platform(platform, DOMAIN, {}, config)
 
     if not await service.connect():
         raise PlatformNotReady
