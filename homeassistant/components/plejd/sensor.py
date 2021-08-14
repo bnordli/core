@@ -15,8 +15,8 @@
 
 import logging
 
-from homeassistant.components.sensor import SensorEntity
-from homeassistant.const import CONF_DEVICES, CONF_SENSORS
+from homeassistant.components.sensor import STATE_CLASS_MEASUREMENT, SensorEntity
+from homeassistant.const import CONF_DEVICES, CONF_SENSORS, PERCENTAGE
 from homeassistant.core import callback
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -28,12 +28,15 @@ _LOGGER = logging.getLogger(__name__)
 class PlejdRotaryButton(SensorEntity, RestoreEntity):
     """Representation of a Plejd rotaty button."""
 
+    _attr_unit_of_measurement = PERCENTAGE
+    _attr_state_class = STATE_CLASS_MEASUREMENT
+
     def __init__(self, name, identity, service):
         """Initialize the sensor."""
         self._name = name
         self._id = identity
         self._service = service
-        self._attr_state = 0.0
+        self._attr_state = 0
 
     async def async_added_to_hass(self):
         """Read the current state of the button when it is added to Home Assistant."""
@@ -42,7 +45,7 @@ class PlejdRotaryButton(SensorEntity, RestoreEntity):
         if old is not None:
             self._attr_state = old.state
         else:
-            self._state = 0.0
+            self._state = 0
 
     @property
     def should_poll(self):
@@ -68,7 +71,7 @@ class PlejdRotaryButton(SensorEntity, RestoreEntity):
     def update_state(self, state, brightness=None):
         """Update the state of the button."""
         if brightness is not None:
-            self._attr_state = 0xFFFF / brightness
+            self._attr_state = int(round(100 * (brightness / 0xFFFF)))
             _LOGGER.debug(
                 f"{self._name} ({self._id}) turned to brightness {self._attr_state}"
             )
