@@ -263,8 +263,8 @@ class PlejdService:
             #     02: scene broadcast
             # c = command
             #     001b: time
-            #     0016: button click, data = id + button + unknown
-            #     0021: set scene, data = scene id
+            #     0016: button clicked, data = id + button + unknown
+            #     0021: scene triggered, data = scene id
             #     0097: state update, data = state, dim
             #     00c8, 0098: state + dim update
             # d = data
@@ -289,24 +289,24 @@ class PlejdService:
                     ntime += struct.pack("<I", int(n.timestamp())) + b"\x00"
                     self._hass.async_create_task(self._write(ntime))
             elif command == b"\x00\x16":
-                # 0016: button click
+                # 0016: button clicked
                 id = dec[5]
                 button = dec[6]
                 data = {
-                    "device": id,
+                    "plejd_id": id,
                     "button": button,
                     "position": "right" if button % 2 else "left",
                     "state": "on" if button < 2 else "off",
                 }
-                # This will pick the name of the left button
+                # Note: This will pick the name of the left button.
                 if id in self._devices:
                     data["name"] = self._devices[id].name
                 self._hass.bus.fire(BUTTON_CLICKED_EVENT, data)
                 return
             elif command == b"\x00\x21":
-                # 0021: scene set
+                # 0021: scene triggered
                 id = dec[5]
-                data = {"scene": id}
+                data = {"plejd_id": id}
                 if id in self._scenes:
                     data["name"] = self._scenes[id]
                 self._hass.bus.fire(SCENE_TRIGGERED_EVENT, data)
