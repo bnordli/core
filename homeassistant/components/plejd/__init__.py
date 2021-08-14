@@ -49,18 +49,19 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Optional(CONF_DEVICES, default={}): {
                     cv.string: vol.Schema(
                         {
+                            vol.Required(CONF_NAME): cv.string,
                             vol.Required(CONF_TYPE): cv.string,
                             vol.Optional(CONF_LIGHTS, default={}): {
-                                cv.string: cv.positive_int
+                                cv.positive_int: cv.string
                             },
                             vol.Optional(CONF_SWITCHES, default={}): {
-                                cv.string: cv.positive_int
+                                cv.positive_int: cv.string
                             },
                             vol.Optional(CONF_BINARY_SENSORS, default={}): {
-                                cv.string: cv.positive_int
+                                cv.positive_int: cv.string
                             },
                             vol.Optional(CONF_SENSORS, default={}): {
-                                cv.string: cv.positive_int
+                                cv.positive_int: cv.string
                             },
                         }
                     )
@@ -78,7 +79,7 @@ async def async_setup(hass, config):
         return True
 
     plejdconfig = config[DOMAIN]
-    _LOGGER.debug("Config: " + json.dump(plejdconfig, indent=2))
+    _LOGGER.debug("Config: " + json.dumps(plejdconfig, indent=2))
 
     devices = {}
     service = PlejdService(hass, plejdconfig, devices)

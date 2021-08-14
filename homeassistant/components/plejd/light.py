@@ -22,7 +22,16 @@ from homeassistant.components.light import (
     COLOR_MODE_ONOFF,
     LightEntity,
 )
-from homeassistant.const import CONF_LIGHTS, CONF_NAME, STATE_ON
+from homeassistant.const import (
+    ATTR_IDENTIFIERS,
+    ATTR_MANUFACTURER,
+    ATTR_MODEL,
+    ATTR_NAME,
+    CONF_DEVICES,
+    CONF_NAME,
+    CONF_TYPE,
+    STATE_ON,
+)
 from homeassistant.core import callback
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -34,10 +43,11 @@ _LOGGER = logging.getLogger(__name__)
 class PlejdLight(LightEntity, RestoreEntity):
     """Representation of a Plejd light."""
 
-    def __init__(self, name, identity, service):
+    def __init__(self, name, identity, device, service):
         """Initialize the light."""
         self._name = name
         self._id = identity
+        self._device = device
         self._service = service
         self._brightness = None
 
@@ -58,6 +68,11 @@ class PlejdLight(LightEntity, RestoreEntity):
 
         else:
             self._state = False
+
+    @property
+    def device_info(self):
+        """Return a device description for device registry."""
+        return self._device
 
     @property
     def should_poll(self):
@@ -144,11 +159,26 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
     service = plejdinfo["service"]
     lights = []
 
-    for identity, entity_info in plejdinfo["config"].get(CONF_LIGHTS).items():
-        i = int(identity)
-        _LOGGER.debug(f"Adding light {i} ({entity_info[CONF_NAME]})")
-        light = PlejdLight(entity_info[CONF_NAME], i, service)
-        plejdinfo["devices"][i] = light
-        lights.append(light)
+    for device_id, device_info in plejdinfo["config"].get(CONF_DEVICES).items():
+        device = make_device(device_id, device_info)
+        for identity, light_name in device_info.items():
+            i = int(identity)
+            if i in plejdinfo["devices"]:
+                _LOGGER.warning(f"Found duplicate definition for Plejd device {i}.")
+                continue
+            _LOGGER.debug(f"Adding light {i} ({light_name})")
+            light = PlejdLight(light_name, i, device, service)
+            plejdinfo["devices"][i] = light
+            lights.append(light)
 
     add_entities(lights)
+
+
+def make_device(device_id, device_info):
+    """Create device information for device registry."""
+    return {
+        ATTR_IDENTIFIERS: {(DOMAIN, device_id)},
+        ATTR_NAME: device_info[CONF_NAME],
+        ATTR_MANUFACTURER: "Plejd",
+        ATTR_MODEL: device_info[CONF_TYPE],
+    }
