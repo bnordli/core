@@ -6,6 +6,8 @@ import logging
 import voluptuous as vol
 
 from homeassistant.const import (
+    ATTR_ID,
+    ATTR_NAME,
     CONF_BINARY_SENSORS,
     CONF_DEVICES,
     CONF_LIGHTS,
@@ -26,6 +28,7 @@ from .const import (
     DEFAULT_DBUS_PATH,
     DEFAULT_DISCOVERY_TIMEOUT,
     DOMAIN,
+    SCENE_SERVICE,
 )
 from .plejd_service import PlejdService
 
@@ -97,6 +100,20 @@ async def async_setup(hass, config):
     if not await service.connect():
         raise PlatformNotReady
     await service.check_connection()
+
+    def handle_trigger_scene(call):
+        id = call.data.get(ATTR_ID, None)
+        if id is not None:
+            service.trigger_scene(id)
+            return
+        name = call.data.get(ATTR_NAME, "")
+        for id, scene_name in scenes.items():
+            if name == scene_name:
+                service.trigger_scene(id)
+        _LOGGER.warning(f"Scene triggered with unknown name {name}")
+        return
+
+    hass.services.register(DOMAIN, SCENE_SERVICE, handle_trigger_scene)
     _LOGGER.debug("Plejd platform setup completed")
     hass.async_create_task(service.request_update())
     return True

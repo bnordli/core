@@ -361,6 +361,12 @@ class PlejdService:
 
         return True
 
+    def trigger_scene(self, id):
+        """Trigger the scene with the specific id."""
+        payload = binascii.a2b_hex(f"0201100021{id:02x}")
+        _LOGGER.debug(f"Trigger scene {id}")
+        self._hass.async_create_task(self._write(payload))
+
     async def request_update(self):
         """Request an update of all devices."""
         await self._bus.write_data("lightlevel", b"\x01")
