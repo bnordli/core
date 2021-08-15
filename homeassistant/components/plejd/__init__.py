@@ -47,9 +47,12 @@ CONFIG_SCHEMA = vol.Schema(
                 ): cv.positive_int,
                 vol.Optional(CONF_DBUS_ADDRESS, default=DEFAULT_DBUS_PATH): cv.string,
                 vol.Optional(CONF_OFFSET_MINUTES, default=0): int,
-                vol.Optional(CONF_LIGHTS, default={}): {
-                    cv.string: vol.Schema({vol.Required(CONF_NAME): cv.string})
+                vol.Optional(CONF_LIGHTS, default={}): {cv.positive_int: cv.string},
+                vol.Optional(CONF_SWITCHES, default={}): {cv.positive_int: cv.string},
+                vol.Optional(CONF_BINARY_SENSORS, default={}): {
+                    cv.positive_int: cv.string
                 },
+                vol.Optional(CONF_SENSORS, default={}): {cv.positive_int: cv.string},
                 vol.Optional(CONF_DEVICES, default={}): {
                     cv.string: vol.Schema(
                         {
