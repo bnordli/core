@@ -22,7 +22,7 @@ from homeassistant.components.light import (
     COLOR_MODE_ONOFF,
     LightEntity,
 )
-from homeassistant.const import CONF_DEVICES, CONF_LIGHTS, STATE_ON
+from homeassistant.const import CONF_LIGHTS, STATE_ON
 from homeassistant.core import callback
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -120,16 +120,15 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
     service = plejdinfo["service"]
     lights = []
 
-    for device_info in plejdinfo["config"].get(CONF_DEVICES).values():
-        for identity, light_name in device_info[CONF_LIGHTS].items():
-            i = int(identity)
-            if i in plejdinfo["devices"]:
-                _LOGGER.warning(f"Found duplicate definition for Plejd device {i}.")
-                continue
-            _LOGGER.debug(f"Adding light {i} ({light_name})")
-            light = PlejdLight(light_name, i, service)
-            plejdinfo["devices"][i] = light
-            lights.append(light)
+    for identity, light_name in plejdinfo["config"][CONF_LIGHTS].items():
+        i = int(identity)
+        if i in plejdinfo["devices"]:
+            _LOGGER.warning(f"Found duplicate definition for Plejd device {i}.")
+            continue
+        _LOGGER.debug(f"Adding light {i} ({light_name})")
+        light = PlejdLight(light_name, i, service)
+        plejdinfo["devices"][i] = light
+        lights.append(light)
 
     add_entities(lights)
 

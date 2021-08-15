@@ -17,7 +17,7 @@ import binascii
 import logging
 
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.const import CONF_DEVICES, CONF_SWITCHES, STATE_ON
+from homeassistant.const import CONF_SWITCHES, STATE_ON
 from homeassistant.core import callback
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -75,16 +75,15 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
     service = plejdinfo["service"]
     switches = []
 
-    for device_info in plejdinfo["config"].get(CONF_DEVICES).values():
-        for identity, switch_name in device_info[CONF_SWITCHES].items():
-            i = int(identity)
-            if i in plejdinfo["devices"]:
-                _LOGGER.warning(f"Found duplicate definition for Plejd device {i}.")
-                continue
-            _LOGGER.debug(f"Adding switch {i} ({switch_name})")
-            switch = PlejdSwitch(switch_name, i, service)
-            plejdinfo["devices"][i] = switch
-            switches.append(switch)
+    for identity, switch_name in plejdinfo["config"][CONF_SWITCHES].items():
+        i = int(identity)
+        if i in plejdinfo["devices"]:
+            _LOGGER.warning(f"Found duplicate definition for Plejd device {i}.")
+            continue
+        _LOGGER.debug(f"Adding switch {i} ({switch_name})")
+        switch = PlejdSwitch(switch_name, i, service)
+        plejdinfo["devices"][i] = switch
+        switches.append(switch)
 
     add_entities(switches)
 

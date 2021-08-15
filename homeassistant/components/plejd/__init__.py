@@ -9,12 +9,9 @@ from homeassistant.const import (
     ATTR_ID,
     ATTR_NAME,
     CONF_BINARY_SENSORS,
-    CONF_DEVICES,
     CONF_LIGHTS,
-    CONF_NAME,
     CONF_SENSORS,
     CONF_SWITCHES,
-    CONF_TYPE,
 )
 from homeassistant.core import callback
 from homeassistant.exceptions import PlatformNotReady
@@ -53,26 +50,6 @@ CONFIG_SCHEMA = vol.Schema(
                     cv.positive_int: cv.string
                 },
                 vol.Optional(CONF_SENSORS, default={}): {cv.positive_int: cv.string},
-                vol.Optional(CONF_DEVICES, default={}): {
-                    cv.string: vol.Schema(
-                        {
-                            vol.Required(CONF_NAME): cv.string,
-                            vol.Required(CONF_TYPE): cv.string,
-                            vol.Optional(CONF_LIGHTS, default={}): {
-                                cv.positive_int: cv.string
-                            },
-                            vol.Optional(CONF_SWITCHES, default={}): {
-                                cv.positive_int: cv.string
-                            },
-                            vol.Optional(CONF_BINARY_SENSORS, default={}): {
-                                cv.positive_int: cv.string
-                            },
-                            vol.Optional(CONF_SENSORS, default={}): {
-                                cv.positive_int: cv.string
-                            },
-                        }
-                    )
-                },
                 vol.Optional(CONF_SCENES, default={}): {cv.positive_int: cv.string},
             }
         )

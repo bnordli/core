@@ -16,7 +16,7 @@
 import logging
 
 from homeassistant.components.sensor import STATE_CLASS_MEASUREMENT, SensorEntity
-from homeassistant.const import CONF_DEVICES, CONF_SENSORS, PERCENTAGE
+from homeassistant.const import CONF_SENSORS, PERCENTAGE
 from homeassistant.core import callback
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -66,15 +66,14 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
     service = plejdinfo["service"]
     buttons = []
 
-    for device_info in plejdinfo["config"].get(CONF_DEVICES).values():
-        for identity, sensor_name in device_info[CONF_SENSORS].items():
-            i = int(identity)
-            if i in plejdinfo["devices"]:
-                _LOGGER.warning(f"Found duplicate definition for Plejd device {i}.")
-                continue
-            _LOGGER.debug(f"Adding sensor {i} ({sensor_name})")
-            button = PlejdRotaryButton(sensor_name, i, service)
-            plejdinfo["devices"][i] = button
-            buttons.append(button)
+    for identity, sensor_name in plejdinfo["config"][CONF_SENSORS].items():
+        i = int(identity)
+        if i in plejdinfo["devices"]:
+            _LOGGER.warning(f"Found duplicate definition for Plejd device {i}.")
+            continue
+        _LOGGER.debug(f"Adding sensor {i} ({sensor_name})")
+        button = PlejdRotaryButton(sensor_name, i, service)
+        plejdinfo["devices"][i] = button
+        buttons.append(button)
 
     add_entities(buttons)
