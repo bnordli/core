@@ -16,6 +16,7 @@ from homeassistant.const import (
     CONF_SWITCHES,
     CONF_TYPE,
 )
+from homeassistant.core import callback
 from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import config_validation as cv
 
@@ -101,8 +102,10 @@ async def async_setup(hass, config):
         raise PlatformNotReady
     await service.check_connection()
 
+    @callback
     def handle_trigger_scene(call):
-        id = call.data.get(ATTR_ID, None)
+        """Handle the trigger scene service."""
+        id = call.data.get(ATTR_ID)
         if id is not None:
             service.trigger_scene(id)
             return
@@ -113,7 +116,7 @@ async def async_setup(hass, config):
         _LOGGER.warning(f"Scene triggered with unknown name {name}")
         return
 
-    hass.services.register(DOMAIN, SCENE_SERVICE, handle_trigger_scene)
+    hass.services.async_register(DOMAIN, SCENE_SERVICE, handle_trigger_scene)
     _LOGGER.debug("Plejd platform setup completed")
     hass.async_create_task(service.request_update())
     return True

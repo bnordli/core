@@ -313,7 +313,7 @@ class PlejdService:
                 return
             elif command == b"\x00\x97":
                 # 0097: state update
-                device = self._devices[id]
+                device = self._devices.get(id)
                 if device is None:
                     _LOGGER.debug(f"No match for device '{id:02x}'")
                     return
@@ -321,7 +321,7 @@ class PlejdService:
                 device.update_state(state, None)
             elif command == b"\x00\xc8" or command == b"\x00\x98":
                 # 00c8, 0098: state + dim update
-                device = self._devices[id]
+                device = self._devices.get(id)
                 if device is None:
                     _LOGGER.debug(f"No match for device '{id:02x}'")
                     return
