@@ -91,7 +91,7 @@ async def async_setup(hass, config):
             return
         name = call.data.get(ATTR_NAME, "")
         for id, scene_name in scenes.items():
-            if name == scene_name:
+            if name.lower() == scene_name.lower():
                 service.trigger_scene(id)
         _LOGGER.warning(f"Scene triggered with unknown name {name}")
         return
