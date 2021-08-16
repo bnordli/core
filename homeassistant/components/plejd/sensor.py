@@ -15,13 +15,13 @@
 
 import logging
 
-from homeassistant.components.plejd.plejd_service import PlejdService
 from homeassistant.components.sensor import STATE_CLASS_MEASUREMENT, SensorEntity
 from homeassistant.const import CONF_SENSORS, PERCENTAGE
 from homeassistant.core import callback
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN
+from .plejd_service import PlejdService
 
 _LOGGER = logging.getLogger(__name__)
 
