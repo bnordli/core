@@ -32,13 +32,13 @@ class PlejdButton(BinarySensorEntity, RestoreEntity):
     _attr_should_poll = False
     _attr_assumed_state = False
 
-    def __init__(self, name, identity, service):
+    def __init__(self, name: str, identity: int, service: PlejdService) -> None:
         """Initialize the binary sensor."""
         self._attr_name = name
         self._attr_unique_id = str(identity)
         self._service = service
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Read the current state of the button when it is added to Home Assistant."""
         await super().async_added_to_hass()
         old = await self.async_get_last_state()
@@ -46,7 +46,7 @@ class PlejdButton(BinarySensorEntity, RestoreEntity):
             self._attr_is_on = old.state == STATE_ON
 
     @callback
-    def update_state(self, state, brightness=None):
+    def update_state(self, state: bool) -> None:
         """Update the state of the button."""
         self._attr_is_on = state
         _LOGGER.debug(f"{self.name} ({self.unique_id}) turned {self.state}")

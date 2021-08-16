@@ -15,6 +15,7 @@
 
 import binascii
 import logging
+from typing import Optional
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import CONF_SWITCHES, STATE_ON
@@ -33,16 +34,16 @@ class PlejdSwitch(SwitchEntity, RestoreEntity):
     _attr_should_poll = False
     _attr_assumed_state = False
     _hex_id: str
+    _brightness: Optional[int] = None
 
-    def __init__(self, name, identity, service):
+    def __init__(self, name: str, identity: int, service: PlejdService):
         """Initialize the switch."""
         self._attr_name = name
         self._attr_unique_id = str(identity)
         self._hex_id = f"{identity:02x}"
         self._service = service
-        self._brightness = None
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Read the current state of the switch when it is added to Home Assistant."""
         await super().async_added_to_hass()
         old = await self.async_get_last_state()
@@ -50,21 +51,21 @@ class PlejdSwitch(SwitchEntity, RestoreEntity):
             self._attr_is_on = old.state == STATE_ON
 
     @callback
-    def update_state(self, state, brightness=None):
+    def update_state(self, state: bool) -> None:
         """Update the state of the switch."""
         self._attr_is_on = state
         _LOGGER.debug(f"{self.name} ({self.unique_id}) turned {self.state}")
         self.async_schedule_update_ha_state()
 
-    async def async_turn_on(self, **kwargs):
+    async def async_turn_on(self, **kwargs) -> None:
         """Turn the switch on."""
         payload = binascii.a2b_hex(f"{self._hex_id}0110009701")
         _LOGGER.debug(f"Turning on {self.name} ({self.unique_id})")
         await self._service._write(payload)
 
-    async def async_turn_off(self, **kwargs):
+    async def async_turn_off(self, **kwargs) -> None:
         """Turn the switch off."""
-        payload = binascii.a2b_hex(f"{self._hex_id:02x}0110009700")
+        payload = binascii.a2b_hex(f"{self._hex_id}0110009700")
         _LOGGER.debug(f"Turning off {self.name} ({self.unique_id})")
         await self._service._write(payload)
 

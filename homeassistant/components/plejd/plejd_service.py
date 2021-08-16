@@ -21,9 +21,12 @@ import logging
 import os
 import re
 import struct
+from typing import Any, Callable, Dict, Optional
+
+from dbus_next.aio.proxy_object import ProxyInterface
 
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_point_in_utc_time
 import homeassistant.util.dt as dt_util
 
@@ -56,24 +59,25 @@ _LOGGER = logging.getLogger(__name__)
 class PlejdBus:
     """Representation of the message bus connected to Plejd."""
 
-    def __init__(self, address):
+    _chars: Dict[str, ProxyInterface] = {}
+
+    def __init__(self, address: str) -> None:
         """Initialize the bus."""
         self._address = address
-        self._chars = {}
 
-    async def write_data(self, char, data):
+    async def write_data(self, char: str, data: bytes) -> None:
         """Write data to one characteristic."""
         await self._chars[char].call_write_value(data, {})
 
-    async def read_data(self, char):
+    async def read_data(self, char: str) -> bytes:
         """Read data from one characteristic."""
         return await self._chars[char].call_read_value({})
 
-    async def add_callback(self, method, handler):
+    async def add_callback(self, method: str, handler: Callable[[bytes], None]) -> None:
         """Register a callback on a characteristic."""
 
         @callback
-        def unwrap_value(iface, changed_props, invalidated_props):
+        def unwrap_value(iface: str, changed_props: dict, invalidated_props) -> None:
             if iface != GATT_CHRC_IFACE:
                 return
             if not len(changed_props):
@@ -86,12 +90,12 @@ class PlejdBus:
         self._chars[method + "_prop"].on_properties_changed(unwrap_value)
         await self._chars[method].call_start_notify()
 
-    async def _get_interface(self, path, interface):
+    async def _get_interface(self, path: str, interface: str) -> ProxyInterface:
         introspection = await self._bus.introspect(BLUEZ_SERVICE_NAME, path)
         object = self._bus.get_proxy_object(BLUEZ_SERVICE_NAME, path, introspection)
         return object.get_interface(interface)
 
-    async def connect(self):
+    async def connect(self) -> bool:
         """Connect to the message bus."""
         from dbus_next import BusType
         from dbus_next.aio import MessageBus
@@ -105,14 +109,14 @@ class PlejdBus:
             return False
         return True
 
-    async def _get_adapter(self):
+    async def _get_adapter(self) -> ProxyInterface:
         om_objects = await self._om.call_get_managed_objects()
         for path, interfaces in om_objects.items():
             if BLUEZ_ADAPTER_IFACE in interfaces.keys():
                 _LOGGER.debug(f"Discovered bluetooth adapter {path}")
                 return await self._get_interface(path, BLUEZ_ADAPTER_IFACE)
 
-    async def connect_device(self, timeout):
+    async def connect_device(self, timeout: int) -> bool:
         """Disconnect all currently connected devices and connect to the closest plejd device."""
         from dbus_next import Variant
         from dbus_next.errors import DBusError
@@ -172,7 +176,7 @@ class PlejdBus:
         await asyncio.sleep(timeout)
         return True
 
-    async def get_plejd_address(self):
+    async def get_plejd_address(self) -> Optional[bytes]:
         """Get the plejd address and also collect characteristics."""
         om_objects = await self._om.call_get_managed_objects()
         chrcs = []
@@ -192,6 +196,9 @@ class PlejdBus:
 
             dev = await service.get_device()
             x = re.search("dev_([0-9A-F_]+)$", dev)
+            if not x:
+                _LOGGER.error(f"Unsupported device address '{dev}'")
+                return None
             addr = binascii.a2b_hex(x.group(1).replace("_", ""))[::-1]
 
             # Process the characteristics.
@@ -223,25 +230,36 @@ class PlejdBus:
 class PlejdService:
     """Representation of the Plejd service."""
 
-    def __init__(self, hass, config, devices, scenes):
+    _address: str
+    _key: bytes
+    _plejd_address: Optional[bytes] = None
+    _bus: Optional[PlejdBus] = None
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config: Dict[str, Any],
+        devices: Dict[int, Any],
+        scenes: Dict[int, str],
+    ) -> None:
         """Initialize the service."""
         self._hass = hass
         self._config = config
-        self._address = config.get(CONF_DBUS_ADDRESS)
-        self._key = binascii.a2b_hex(config.get(CONF_CRYPTO_KEY).replace("-", ""))
+        self._address = config.get(CONF_DBUS_ADDRESS, "")
+        self._key = binascii.a2b_hex(config.get(CONF_CRYPTO_KEY, "").replace("-", ""))
         self._devices = devices
         self._scenes = scenes
-        self._plejd_address = None
-        self._bus = None
-        self._remove_timer = lambda: ()
+        self._remove_timer = lambda: None
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._stop_plejd)
 
-    async def connect(self):
+    async def connect(self) -> bool:
         """Connect to the Plejd service."""
         self._bus = PlejdBus(self._address)
         if not await self._bus.connect():
             return False
-        if not await self._bus.connect_device(self._config.get(CONF_DISCOVERY_TIMEOUT)):
+        if not await self._bus.connect_device(
+            self._config.get(CONF_DISCOVERY_TIMEOUT, 0)
+        ):
             return False
 
         self._plejd_address = await self._bus.get_plejd_address()
@@ -252,8 +270,11 @@ class PlejdService:
             return False
 
         @callback
-        def handle_notification_cb(value):
-            dec = self._enc_dec(value)
+        def handle_notification_cb(value: bytes) -> None:
+            if not self._plejd_address:
+                _LOGGER.warning("Tried to write to plejd when not connected")
+                return
+            dec = self._enc_dec(self._plejd_address, value)
             _LOGGER.debug(f"Received message {dec.hex()}")
             # Format
             # 012345...
@@ -278,7 +299,7 @@ class PlejdService:
                     return
                 n = dt_util.now().replace(tzinfo=None)
                 time = datetime.fromtimestamp(struct.unpack_from("<I", dec, 5)[0])
-                n = n + timedelta(minutes=self._config.get(CONF_OFFSET_MINUTES))
+                n = n + timedelta(minutes=self._config.get(CONF_OFFSET_MINUTES, 0))
                 delta = abs(time - n)
                 _LOGGER.debug(f"Plejd network reports time as '{time}'")
                 s = delta.total_seconds()
@@ -333,7 +354,7 @@ class PlejdService:
                 _LOGGER.debug(f"No match for command '{command.hex()}'")
 
         @callback
-        def handle_state_cb(value):
+        def handle_state_cb(value: bytes) -> None:
             _LOGGER.debug(f"Received state {value.hex()}")
             # One or two messages of format
             # 0123456789
@@ -362,17 +383,20 @@ class PlejdService:
 
         return True
 
-    def trigger_scene(self, id):
+    def trigger_scene(self, id: int) -> None:
         """Trigger the scene with the specific id."""
         payload = binascii.a2b_hex(f"0201100021{id:02x}")
         _LOGGER.debug(f"Trigger scene {id}")
         self._hass.async_create_task(self._write(payload))
 
-    async def request_update(self):
+    async def request_update(self) -> None:
         """Request an update of all devices."""
+        if not self._bus:
+            _LOGGER.warning("Tried to write to plejd when not connected")
+            return
         await self._bus.write_data("lightlevel", b"\x01")
 
-    async def check_connection(self, now=None):
+    async def check_connection(self, now=None) -> None:
         """Send a ping and reconnect if it failed. Then schedule another check in the future."""
         if not await self._send_ping():
             await self.connect()
@@ -380,10 +404,13 @@ class PlejdService:
             self._hass, self.check_connection, dt_util.utcnow() + timedelta(seconds=300)
         )
 
-    async def _stop_plejd(self, event):
+    async def _stop_plejd(self, event) -> None:
         self._remove_timer()
 
-    async def _authenticate(self):
+    async def _authenticate(self) -> bool:
+        if not self._bus:
+            _LOGGER.warning("Tried to write to plejd when not connected")
+            return False
         from dbus_next.errors import DBusError
 
         try:
@@ -395,7 +422,10 @@ class PlejdService:
             return False
         return True
 
-    async def _send_ping(self):
+    async def _send_ping(self) -> bool:
+        if not self._bus:
+            _LOGGER.warning("Tried to ping plejd when not connected")
+            return False
         from dbus_next.errors import DBusError
 
         ping = os.urandom(1)
@@ -412,23 +442,23 @@ class PlejdService:
         _LOGGER.debug(f"Successfully pinged with {ping[0]:02x}")
         return True
 
-    async def _write(self, payload):
+    async def _write(self, payload: bytes) -> None:
         from dbus_next.errors import DBusError
 
-        if not self._bus:
+        if not self._bus or not self._plejd_address:
             _LOGGER.warning("Tried to write to plejd when not connected")
             return
 
         try:
-            data = self._enc_dec(payload)
+            data = self._enc_dec(self._plejd_address, payload)
             await self._bus.write_data("data", data)
         except DBusError as e:
             _LOGGER.warning(f"Write failed, reconnecting: '{e}'")
             await self.connect()
-            data = self._enc_dec(payload)
+            data = self._enc_dec(self._plejd_address, payload)
             await self._bus.write_data("data", data)
 
-    def _chalresp(self, chal):
+    def _chalresp(self, chal: bytes) -> bytes:
         import hashlib
 
         k = int.from_bytes(self._key, "big")
@@ -440,12 +470,12 @@ class PlejdService:
         resp = (part1 ^ part2).to_bytes(16, "big")
         return resp
 
-    def _enc_dec(self, data):
+    def _enc_dec(self, address: bytes, data: bytes) -> bytes:
         from cryptography.hazmat.backends import default_backend
         from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-        buf = bytearray(self._plejd_address * 2)
-        buf += self._plejd_address[:4]
+        buf = bytearray(address * 2)
+        buf += address[:4]
 
         ct = (
             Cipher(algorithms.AES(self._key), modes.ECB(), backend=default_backend())
