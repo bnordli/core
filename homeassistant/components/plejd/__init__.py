@@ -113,7 +113,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType):
                 service.trigger_scene(id)
                 return
         _LOGGER.warning(
-            f"Scene triggered with unknown name '{name}'. Known scenes: {scenes.values()}"
+            f"Scene triggered with unknown name '{name}'. Known scenes: {', '.join(s for s in scenes.values())}"
         )
 
     hass.services.async_register(
