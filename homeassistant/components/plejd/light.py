@@ -38,11 +38,13 @@ class PlejdLight(LightEntity, RestoreEntity):
 
     _attr_should_poll = False
     _attr_assumed_state = False
+    _hex_id: str
 
     def __init__(self, name, identity, service):
         """Initialize the light."""
         self._attr_name = name
         self._attr_unique_id = str(identity)
+        self._hex_id = f"{identity:02x}"
         self._service = service
         self._brightness = None
 
@@ -93,12 +95,12 @@ class PlejdLight(LightEntity, RestoreEntity):
         brightness = kwargs.get(ATTR_BRIGHTNESS)
         if brightness is None:
             self._brightness = None
-            payload = binascii.a2b_hex(f"{self.unique_id:02x}0110009701")
+            payload = binascii.a2b_hex(f"{self._hex_id}0110009701")
         else:
             # since ha brightness is just one byte we shift it up and or it in to be able to get max val
             self._brightness = brightness << 8 | brightness
             payload = binascii.a2b_hex(
-                f"{self.unique_id:02x}0110009801{self._brightness:04x}"
+                f"{self._hex_id}0110009801{self._brightness:04x}"
             )
 
         _LOGGER.debug(
@@ -108,7 +110,7 @@ class PlejdLight(LightEntity, RestoreEntity):
 
     async def async_turn_off(self, **kwargs):
         """Turn the light off."""
-        payload = binascii.a2b_hex(f"{self.unique_id:02x}0110009700")
+        payload = binascii.a2b_hex(f"{self._hex_id}0110009700")
         _LOGGER.debug(f"Turning off {self.name} ({self.unique_id})")
         await self._service._write(payload)
 

@@ -32,11 +32,13 @@ class PlejdSwitch(SwitchEntity, RestoreEntity):
 
     _attr_should_poll = False
     _attr_assumed_state = False
+    _hex_id: str
 
     def __init__(self, name, identity, service):
         """Initialize the switch."""
         self._attr_name = name
         self._attr_unique_id = str(identity)
+        self._hex_id = f"{identity:02x}"
         self._service = service
         self._brightness = None
 
@@ -56,13 +58,13 @@ class PlejdSwitch(SwitchEntity, RestoreEntity):
 
     async def async_turn_on(self, **kwargs):
         """Turn the switch on."""
-        payload = binascii.a2b_hex(f"{self.unique_id:02x}0110009701")
+        payload = binascii.a2b_hex(f"{self._hex_id}0110009701")
         _LOGGER.debug(f"Turning on {self.name} ({self.unique_id})")
         await self._service._write(payload)
 
     async def async_turn_off(self, **kwargs):
         """Turn the switch off."""
-        payload = binascii.a2b_hex(f"{self.unique_id:02x}0110009700")
+        payload = binascii.a2b_hex(f"{self._hex_id:02x}0110009700")
         _LOGGER.debug(f"Turning off {self.name} ({self.unique_id})")
         await self._service._write(payload)
 
