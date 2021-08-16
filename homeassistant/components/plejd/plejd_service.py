@@ -340,7 +340,7 @@ class PlejdService:
                     _LOGGER.debug(f"No match for device '{id:02x}'")
                     return
                 state = bool(dec[5])
-                device.update_state(state, None)
+                device.update_state(state)
             elif command == b"\x00\xc8" or command == b"\x00\x98":
                 # 00c8, 0098: state + dim update
                 device = self._devices.get(id)
@@ -375,8 +375,13 @@ class PlejdService:
             for m in msgs:
                 if m[0] not in self._devices:
                     continue
+                state = bool(m[1])
+                brightness = int.from_bytes(m[5:7], "little")
                 device = self._devices[m[0]]
-                device.update_state(bool(m[1]), int.from_bytes(m[5:7], "little"))
+                if not brightness:
+                    device.update_state(state)
+                else:
+                    device.update_state(state, brightness)
 
         await self._bus.add_callback("last_data", handle_notification_cb)
         await self._bus.add_callback("lightlevel", handle_state_cb)
