@@ -30,7 +30,7 @@ from .const import (
     BLUEZ_ADAPTER_IFACE,
     BLUEZ_DEVICE_IFACE,
     BLUEZ_SERVICE_NAME,
-    BUTTON_CLICKED_EVENT,
+    BUTTON_EVENT,
     CONF_CRYPTO_KEY,
     CONF_DBUS_ADDRESS,
     CONF_DISCOVERY_TIMEOUT,
@@ -45,7 +45,7 @@ from .const import (
     PLEJD_LIGHTLEVEL_UUID,
     PLEJD_PING_UUID,
     PLEJD_SVC_UUID,
-    SCENE_TRIGGERED_EVENT,
+    SCENE_EVENT,
     TIME_DELTA_SYNC,
 )
 
@@ -301,7 +301,7 @@ class PlejdService:
                 # Note: This will pick the name of the left button.
                 if id in self._devices:
                     data["name"] = self._devices[id].name
-                self._hass.bus.fire(BUTTON_CLICKED_EVENT, data)
+                self._hass.bus.fire(BUTTON_EVENT, data)
                 return
             elif command == b"\x00\x21":
                 # 0021: scene triggered
@@ -309,7 +309,7 @@ class PlejdService:
                 data = {"plejd_id": id}
                 if id in self._scenes:
                     data["name"] = self._scenes[id]
-                self._hass.bus.fire(SCENE_TRIGGERED_EVENT, data)
+                self._hass.bus.fire(SCENE_EVENT, data)
                 return
             elif command == b"\x00\x97":
                 # 0097: state update
