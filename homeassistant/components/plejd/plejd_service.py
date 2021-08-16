@@ -254,7 +254,7 @@ class PlejdService:
         @callback
         def handle_notification_cb(value):
             dec = self._enc_dec(value)
-            _LOGGER.debug(f"Received message {binascii.b2a_hex(dec)}")
+            _LOGGER.debug(f"Received message {dec.hex()}")
             # Format
             # 012345...
             # i..ccdddd
@@ -330,11 +330,11 @@ class PlejdService:
                 dim = int.from_bytes(dec[6:8], "little")
                 device.update_state(state, dim)
             else:
-                _LOGGER.debug(f"No match for command '{binascii.b2a_hex(command)}'")
+                _LOGGER.debug(f"No match for command '{command.hex()}'")
 
         @callback
         def handle_state_cb(value):
-            _LOGGER.debug(f"Received state {binascii.b2a_hex(value)}")
+            _LOGGER.debug(f"Received state {value.hex()}")
             # One or two messages of format
             # 0123456789
             # is???dd???
@@ -343,7 +343,7 @@ class PlejdService:
             # d = brightness
             if len(value) != 20 and len(value) != 10:
                 _LOGGER.warning(
-                    f"Unknown length data received for state: '{binascii.b2a_hex(value)}'"
+                    f"Unknown length data received for state: '{value.hex()}'"
                 )
                 return
 

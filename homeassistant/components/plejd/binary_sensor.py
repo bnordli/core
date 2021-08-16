@@ -16,6 +16,7 @@
 import logging
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.plejd.plejd_service import PlejdService
 from homeassistant.const import CONF_BINARY_SENSORS, STATE_ON
 from homeassistant.core import callback
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -34,7 +35,7 @@ class PlejdButton(BinarySensorEntity, RestoreEntity):
     def __init__(self, name, identity, service):
         """Initialize the binary sensor."""
         self._attr_name = name
-        self._attr_unique_id = identity
+        self._attr_unique_id = str(identity)
         self._service = service
 
     async def async_added_to_hass(self):
@@ -58,17 +59,16 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
         return
 
     plejdinfo = hass.data[DOMAIN]
-    service = plejdinfo["service"]
+    service: PlejdService = plejdinfo["service"]
     buttons = []
 
-    for identity, sensor_name in plejdinfo["config"][CONF_BINARY_SENSORS].items():
-        i = int(identity)
-        if i in plejdinfo["devices"]:
-            _LOGGER.warning(f"Found duplicate definition for Plejd device {i}.")
+    for id, sensor_name in plejdinfo["config"][CONF_BINARY_SENSORS].items():
+        if id in plejdinfo["devices"]:
+            _LOGGER.warning(f"Found duplicate definition for Plejd device {id}.")
             continue
-        _LOGGER.debug(f"Adding binary sensor {i} ({sensor_name})")
-        button = PlejdButton(sensor_name, i, service)
-        plejdinfo["devices"][i] = button
+        _LOGGER.debug(f"Adding binary sensor {id} ({sensor_name})")
+        button = PlejdButton(sensor_name, id, service)
+        plejdinfo["devices"][id] = button
         buttons.append(button)
 
     add_entities(buttons)

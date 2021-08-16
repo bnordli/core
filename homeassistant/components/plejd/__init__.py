@@ -114,7 +114,6 @@ async def async_setup(hass, config):
         _LOGGER.warning(
             f"Scene triggered with unknown name '{name}'. Known scenes: {scenes.values()}"
         )
-        return
 
     hass.services.async_register(
         DOMAIN, SCENE_SERVICE, handle_scene_service, schema=SCENE_SERVICE_SCHEMA

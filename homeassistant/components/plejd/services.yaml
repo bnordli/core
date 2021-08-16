@@ -1,8 +1,6 @@
 trigger_scene:
   name: Trigger scene
-  # Description of the service
   description: Triggers a Plejd scene, either by id or by name
-  # Different fields that your service accepts
   fields:
     id:
       name: Internal Plejd id

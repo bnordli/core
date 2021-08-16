@@ -23,6 +23,7 @@ from homeassistant.components.light import (
     COLOR_MODE_ONOFF,
     LightEntity,
 )
+from homeassistant.components.plejd.plejd_service import PlejdService
 from homeassistant.const import CONF_LIGHTS, STATE_ON
 from homeassistant.core import callback
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -41,7 +42,7 @@ class PlejdLight(LightEntity, RestoreEntity):
     def __init__(self, name, identity, service):
         """Initialize the light."""
         self._attr_name = name
-        self._attr_unique_id = identity
+        self._attr_unique_id = str(identity)
         self._service = service
         self._brightness = None
 
@@ -118,7 +119,7 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
         return
 
     plejdinfo = hass.data[DOMAIN]
-    service = plejdinfo["service"]
+    service: PlejdService = plejdinfo["service"]
     lights = []
 
     for identity, light_name in plejdinfo["config"][CONF_LIGHTS].items():
@@ -132,13 +133,3 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
         lights.append(light)
 
     add_entities(lights)
-
-
-# def make_device(device_id, device_info):
-#    """Create device information for device registry."""
-#    return {
-#        ATTR_IDENTIFIERS: {(DOMAIN, device_id)},
-#        ATTR_NAME: device_info[CONF_NAME],
-#        ATTR_MANUFACTURER: "Plejd",
-#        ATTR_MODEL: device_info[CONF_TYPE],
-#    }
