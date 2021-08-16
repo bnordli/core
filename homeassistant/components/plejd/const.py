@@ -1,8 +1,8 @@
 """Constants for the Plejd integration."""
 
 DOMAIN = "plejd"
-BUTTON_CLICKED_EVENT = DOMAIN + "_button_clicked"
-SCENE_TRIGGERED_EVENT = DOMAIN + "_scene_triggered"
+BUTTON_EVENT = DOMAIN + "_button_event"
+SCENE_EVENT = DOMAIN + "_scene_event"
 SCENE_SERVICE = "trigger_scene"
 
 CONF_CRYPTO_KEY = "crypto_key"

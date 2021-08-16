@@ -57,6 +57,10 @@ CONFIG_SCHEMA = vol.Schema(
     extra=vol.ALLOW_EXTRA,
 )
 
+SCENE_SERVICE_SCHEMA = vol.Schema(
+    {vol.Optional(ATTR_ID): cv.positive_int, vol.Optional(ATTR_NAME): cv.string}
+)
+
 
 async def async_setup(hass, config):
     """Activate the Plejd integration from configuration yaml."""
@@ -83,7 +87,7 @@ async def async_setup(hass, config):
     await service.check_connection()
 
     @callback
-    def handle_trigger_scene(call):
+    def handle_scene_service(call):
         """Handle the trigger scene service."""
         id = call.data.get(ATTR_ID)
         if id is not None:
@@ -93,10 +97,14 @@ async def async_setup(hass, config):
         for id, scene_name in scenes.items():
             if name.lower() == scene_name.lower():
                 service.trigger_scene(id)
-        _LOGGER.warning(f"Scene triggered with unknown name {name}")
+        _LOGGER.warning(
+            f"Scene triggered with unknown name '{name}'. Known scenes: {scenes.values()}"
+        )
         return
 
-    hass.services.async_register(DOMAIN, SCENE_SERVICE, handle_trigger_scene)
+    hass.services.async_register(
+        DOMAIN, SCENE_SERVICE, handle_scene_service, schema=SCENE_SERVICE_SCHEMA
+    )
     _LOGGER.debug("Plejd platform setup completed")
     hass.async_create_task(service.request_update())
     return True
