@@ -16,6 +16,7 @@
 
 import binascii
 import logging
+from typing import Optional
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -23,6 +24,7 @@ from homeassistant.components.light import (
     COLOR_MODE_ONOFF,
     LightEntity,
 )
+from homeassistant.components.plejd.plejd_service import PlejdService
 from homeassistant.const import CONF_LIGHTS, STATE_ON
 from homeassistant.core import callback
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -37,15 +39,15 @@ class PlejdLight(LightEntity, RestoreEntity):
 
     _attr_should_poll = False
     _attr_assumed_state = False
+    _brightness: Optional[int] = None
 
-    def __init__(self, name, identity, service):
+    def __init__(self, name: str, identity: int, service: PlejdService) -> None:
         """Initialize the light."""
         self._attr_name = name
-        self._attr_unique_id = identity
+        self._attr_unique_id = str(identity)
         self._service = service
-        self._brightness = None
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Read the current state of the light when it is added to Home Assistant."""
         await super().async_added_to_hass()
         old = await self.async_get_last_state()
@@ -63,7 +65,7 @@ class PlejdLight(LightEntity, RestoreEntity):
             self._attr_is_on = False
 
     @property
-    def brightness(self):
+    def brightness(self) -> int | None:
         """Return the current brightness of this light."""
         if self._brightness:
             return self._brightness >> 8
@@ -71,7 +73,7 @@ class PlejdLight(LightEntity, RestoreEntity):
             return None
 
     @callback
-    def update_state(self, state, brightness=None):
+    def update_state(self, state: bool, brightness: int | None = None) -> None:
         """Update the state of the light."""
         self._attr_is_on = state
         self._brightness = brightness
@@ -87,7 +89,7 @@ class PlejdLight(LightEntity, RestoreEntity):
             self._attr_color_mode = COLOR_MODE_ONOFF
         self.async_schedule_update_ha_state()
 
-    async def async_turn_on(self, **kwargs):
+    async def async_turn_on(self, **kwargs) -> None:
         """Turn the light on."""
         brightness = kwargs.get(ATTR_BRIGHTNESS)
         if brightness is None:
@@ -105,7 +107,7 @@ class PlejdLight(LightEntity, RestoreEntity):
         )
         await self._service._write(payload)
 
-    async def async_turn_off(self, **kwargs):
+    async def async_turn_off(self, **kwargs) -> None:
         """Turn the light off."""
         payload = binascii.a2b_hex(f"{self.unique_id:02x}0110009700")
         _LOGGER.debug(f"Turning off {self.name} ({self.unique_id})")
@@ -118,27 +120,16 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
         return
 
     plejdinfo = hass.data[DOMAIN]
-    service = plejdinfo["service"]
+    service: PlejdService = plejdinfo["service"]
     lights = []
 
-    for identity, light_name in plejdinfo["config"][CONF_LIGHTS].items():
-        i = int(identity)
-        if i in plejdinfo["devices"]:
-            _LOGGER.warning(f"Found duplicate definition for Plejd device {i}.")
+    for id, light_name in plejdinfo["config"][CONF_LIGHTS].items():
+        if id in plejdinfo["devices"]:
+            _LOGGER.warning(f"Found duplicate definition for Plejd device {id}.")
             continue
-        _LOGGER.debug(f"Adding light {i} ({light_name})")
-        light = PlejdLight(light_name, i, service)
-        plejdinfo["devices"][i] = light
+        _LOGGER.debug(f"Adding light {id} ({light_name})")
+        light = PlejdLight(light_name, id, service)
+        plejdinfo["devices"][id] = light
         lights.append(light)
 
     add_entities(lights)
-
-
-# def make_device(device_id, device_info):
-#    """Create device information for device registry."""
-#    return {
-#        ATTR_IDENTIFIERS: {(DOMAIN, device_id)},
-#        ATTR_NAME: device_info[CONF_NAME],
-#        ATTR_MANUFACTURER: "Plejd",
-#        ATTR_MODEL: device_info[CONF_TYPE],
-#    }

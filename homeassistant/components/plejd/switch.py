@@ -15,7 +15,9 @@
 
 import binascii
 import logging
+from typing import Optional
 
+from homeassistant.components.plejd.plejd_service import PlejdService
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import CONF_SWITCHES, STATE_ON
 from homeassistant.core import callback
@@ -31,37 +33,37 @@ class PlejdSwitch(SwitchEntity, RestoreEntity):
 
     _attr_should_poll = False
     _attr_assumed_state = False
+    _brightness: Optional[int] = None
 
-    def __init__(self, name, identity, service):
+    def __init__(self, name: str, identity: int, service: PlejdService):
         """Initialize the switch."""
         self._attr_name = name
-        self._attr_unique_id = identity
+        self._attr_unique_id = str(identity)
         self._service = service
-        self._brightness = None
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Read the current state of the switch when it is added to Home Assistant."""
         await super().async_added_to_hass()
         old = await self.async_get_last_state()
         if old is not None:
-            self._attr_state = old.state == STATE_ON
+            self._attr_is_on = old.state == STATE_ON
 
     @callback
-    def update_state(self, state, brightness=None):
+    def update_state(self, state: bool) -> None:
         """Update the state of the switch."""
-        self._attr_state = state
+        self._attr_is_on = state
         _LOGGER.debug(f"{self.name} ({self.unique_id}) turned {self.state}")
         self.async_schedule_update_ha_state()
 
-    async def async_turn_on(self, **kwargs):
+    async def async_turn_on(self, **kwargs) -> None:
         """Turn the switch on."""
-        payload = binascii.a2b_hex(f"{self._id:02x}0110009701")
+        payload = binascii.a2b_hex(f"{self.unique_id:02x}0110009701")
         _LOGGER.debug(f"Turning on {self.name} ({self.unique_id})")
         await self._service._write(payload)
 
-    async def async_turn_off(self, **kwargs):
+    async def async_turn_off(self, **kwargs) -> None:
         """Turn the switch off."""
-        payload = binascii.a2b_hex(f"{self._id:02x}0110009700")
+        payload = binascii.a2b_hex(f"{self.unique_id:02x}0110009700")
         _LOGGER.debug(f"Turning off {self.name} ({self.unique_id})")
         await self._service._write(payload)
 
@@ -72,27 +74,16 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
         return
 
     plejdinfo = hass.data[DOMAIN]
-    service = plejdinfo["service"]
+    service: PlejdService = plejdinfo["service"]
     switches = []
 
-    for identity, switch_name in plejdinfo["config"][CONF_SWITCHES].items():
-        i = int(identity)
-        if i in plejdinfo["devices"]:
-            _LOGGER.warning(f"Found duplicate definition for Plejd device {i}.")
+    for id, switch_name in plejdinfo["config"][CONF_SWITCHES].items():
+        if id in plejdinfo["devices"]:
+            _LOGGER.warning(f"Found duplicate definition for Plejd device {id}.")
             continue
-        _LOGGER.debug(f"Adding switch {i} ({switch_name})")
-        switch = PlejdSwitch(switch_name, i, service)
-        plejdinfo["devices"][i] = switch
+        _LOGGER.debug(f"Adding switch {id} ({switch_name})")
+        switch = PlejdSwitch(switch_name, id, service)
+        plejdinfo["devices"][id] = switch
         switches.append(switch)
 
     add_entities(switches)
-
-
-# def make_device(device_id, device_info):
-#    """Create device information for device registry."""
-#    return {
-#        ATTR_IDENTIFIERS: {(DOMAIN, device_id)},
-#        ATTR_NAME: device_info[CONF_NAME],
-#        ATTR_MANUFACTURER: "Plejd",
-#        ATTR_MODEL: device_info[CONF_TYPE],
-#    }

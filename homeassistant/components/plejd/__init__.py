@@ -26,9 +26,11 @@ from homeassistant.const import (
     CONF_SENSORS,
     CONF_SWITCHES,
 )
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     CONF_CRYPTO_KEY,
@@ -75,15 +77,14 @@ SCENE_SERVICE_SCHEMA = vol.Schema(
 )
 
 
-async def async_setup(hass, config):
+async def async_setup(hass: HomeAssistant, config: ConfigType):
     """Activate the Plejd integration from configuration yaml."""
     if DOMAIN not in config:
         return True
 
     plejdconfig = config[DOMAIN]
-
-    devices = {}
-    scenes = plejdconfig[CONF_SCENES]
+    devices: dict[int, Entity] = {}
+    scenes: dict[int, str] = plejdconfig[CONF_SCENES]
     service = PlejdService(hass, plejdconfig, devices, scenes)
     plejdinfo = {
         "config": plejdconfig,
@@ -100,7 +101,7 @@ async def async_setup(hass, config):
     await service.check_connection()
 
     @callback
-    def handle_scene_service(call):
+    def handle_scene_service(call: ServiceCall) -> None:
         """Handle the trigger scene service."""
         id = call.data.get(ATTR_ID)
         if id is not None:
@@ -114,7 +115,6 @@ async def async_setup(hass, config):
         _LOGGER.warning(
             f"Scene triggered with unknown name '{name}'. Known scenes: {scenes.values()}"
         )
-        return
 
     hass.services.async_register(
         DOMAIN, SCENE_SERVICE, handle_scene_service, schema=SCENE_SERVICE_SCHEMA

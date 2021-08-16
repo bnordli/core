@@ -15,6 +15,7 @@
 
 import logging
 
+from homeassistant.components.plejd.plejd_service import PlejdService
 from homeassistant.components.sensor import STATE_CLASS_MEASUREMENT, SensorEntity
 from homeassistant.const import CONF_SENSORS, PERCENTAGE
 from homeassistant.core import callback
@@ -33,13 +34,13 @@ class PlejdRotaryButton(SensorEntity, RestoreEntity):
     _attr_state_class = STATE_CLASS_MEASUREMENT
     _attr_unit_of_measurement = PERCENTAGE
 
-    def __init__(self, name, identity, service):
+    def __init__(self, name: str, identity: int, service: PlejdService):
         """Initialize the sensor."""
         self._attr_name = name
-        self._attr_unique_id = identity
+        self._attr_unique_id = str(identity)
         self._service = service
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Read the current state of the button when it is added to Home Assistant."""
         await super().async_added_to_hass()
         old = await self.async_get_last_state()
@@ -47,7 +48,7 @@ class PlejdRotaryButton(SensorEntity, RestoreEntity):
             self._attr_state = old.state
 
     @callback
-    def update_state(self, state, brightness=None):
+    def update_state(self, state: bool, brightness: int | None = None) -> None:
         """Update the state of the button."""
         if brightness is not None:
             self._attr_state = int(round(100 * (brightness / 0xFFFF)))
@@ -63,17 +64,16 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
         return
 
     plejdinfo = hass.data[DOMAIN]
-    service = plejdinfo["service"]
+    service: PlejdService = plejdinfo["service"]
     buttons = []
 
-    for identity, sensor_name in plejdinfo["config"][CONF_SENSORS].items():
-        i = int(identity)
-        if i in plejdinfo["devices"]:
-            _LOGGER.warning(f"Found duplicate definition for Plejd device {i}.")
+    for id, sensor_name in plejdinfo["config"][CONF_SENSORS].items():
+        if id in plejdinfo["devices"]:
+            _LOGGER.warning(f"Found duplicate definition for Plejd device {id}.")
             continue
-        _LOGGER.debug(f"Adding sensor {i} ({sensor_name})")
-        button = PlejdRotaryButton(sensor_name, i, service)
-        plejdinfo["devices"][i] = button
+        _LOGGER.debug(f"Adding sensor {id} ({sensor_name})")
+        button = PlejdRotaryButton(sensor_name, id, service)
+        plejdinfo["devices"][id] = button
         buttons.append(button)
 
     add_entities(buttons)
