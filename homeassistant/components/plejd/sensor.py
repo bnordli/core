@@ -34,6 +34,7 @@ class PlejdRotaryButton(SensorEntity, RestoreEntity):
     _attr_should_poll = False
     _attr_state_class = STATE_CLASS_MEASUREMENT
     _attr_unit_of_measurement = PERCENTAGE
+    _attr_icon = "hass:radiobox-blank"
 
     def __init__(self, name: str, identity: int, service: PlejdService):
         """Initialize the sensor."""
