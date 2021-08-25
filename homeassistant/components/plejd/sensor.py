@@ -14,7 +14,6 @@
 """The Plejd binary sensor platform."""
 
 import logging
-from typing import Optional
 
 from homeassistant.components.sensor import STATE_CLASS_MEASUREMENT, SensorEntity
 from homeassistant.const import CONF_SENSORS, PERCENTAGE
@@ -50,14 +49,13 @@ class PlejdRotaryButton(SensorEntity, RestoreEntity):
             self._attr_state = old.state
 
     @callback
-    def update_state(self, state: bool, brightness: Optional[int] = None) -> None:
+    def update_state(self, state: bool, brightness: int = 0) -> None:
         """Update the state of the button."""
-        if brightness is not None:
-            self._attr_state = int(round(100 * (brightness / 0xFFFF)))
-            _LOGGER.debug(
-                f"{self.name} ({self.unique_id}) turned to brightness {self.state}"
-            )
-            self.async_schedule_update_ha_state()
+        self._attr_state = int(round(100 * (brightness / 0xFFFF)))
+        _LOGGER.debug(
+            f"{self.name} ({self.unique_id}) turned to brightness {self.state}"
+        )
+        self.async_schedule_update_ha_state()
 
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
