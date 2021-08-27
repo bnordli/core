@@ -25,7 +25,13 @@ from typing import Any, Callable, Dict, Optional
 
 from dbus_next.aio.proxy_object import ProxyInterface
 
-from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+from homeassistant.const import (
+    ATTR_NAME,
+    ATTR_STATE,
+    EVENT_HOMEASSISTANT_STOP,
+    STATE_OFF,
+    STATE_ON,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_point_in_utc_time
 import homeassistant.util.dt as dt_util
@@ -314,15 +320,17 @@ class PlejdService:
                 # 0016: button clicked
                 id = dec[5]
                 button = dec[6]
+                # If right button is clicked and configured, use that one instead.
+                if button % 2 and id + 1 in self._devices:
+                    id += 1
                 data = {
                     "plejd_id": id,
                     "button": button,
                     "position": "right" if button % 2 else "left",
-                    "state": "on" if button < 2 else "off",
+                    ATTR_STATE: STATE_ON if button < 2 else STATE_OFF,
                 }
-                # Note: This will pick the name of the left button.
                 if id in self._devices:
-                    data["name"] = self._devices[id].name
+                    data[ATTR_NAME] = self._devices[id].name
                 self._hass.bus.fire(BUTTON_EVENT, data)
                 return
             elif command == b"\x00\x21":
@@ -330,7 +338,7 @@ class PlejdService:
                 id = dec[5]
                 data = {"plejd_id": id}
                 if id in self._scenes:
-                    data["name"] = self._scenes[id]
+                    data[ATTR_NAME] = self._scenes[id]
                 self._hass.bus.fire(SCENE_EVENT, data)
                 return
             elif command == b"\x00\x97":
