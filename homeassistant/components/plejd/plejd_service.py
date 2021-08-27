@@ -288,7 +288,7 @@ class PlejdService:
             # i = device_id
             #     00: button broadcast
             #     01: time broadcast
-            #     02: scene broadcast
+            #     02: scene/timer broadcast
             # c = command
             #     001b: time
             #     0016: button clicked, data = id + button + unknown
@@ -334,9 +334,13 @@ class PlejdService:
                 self._hass.bus.fire(BUTTON_EVENT, data)
                 return
             elif command == b"\x00\x21":
-                # 0021: scene triggered
-                id = dec[5]
-                data = {"plejd_id": id}
+                # 0021: scene or timer triggered
+                id = dec[5] % 128
+                state = dec[5] < 128
+                data = {
+                    "plejd_id": id % 128,
+                    ATTR_STATE: STATE_ON if state else STATE_OFF,
+                }
                 if id in self._scenes:
                     data[ATTR_NAME] = self._scenes[id]
                 self._hass.bus.fire(SCENE_EVENT, data)
