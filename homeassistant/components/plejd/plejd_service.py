@@ -107,7 +107,14 @@ class PlejdBus:
         from dbus_next.aio import MessageBus
 
         messageBus = MessageBus(bus_type=BusType.SYSTEM, bus_address=self._address)
-        self._bus = await messageBus.connect()
+        try:
+            self._bus = await messageBus.connect()
+        except FileNotFoundError:
+            _LOGGER.error(
+                "Failed to connect to the dbus messagebus at '%s', make sure that it exists."
+                % (self._address)
+            )
+            return False
         self._om = await self._get_interface("/", DBUS_OM_IFACE)
         self._adapter = await self._get_adapter()
         if not self._adapter:
