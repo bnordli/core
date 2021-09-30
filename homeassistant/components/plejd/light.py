@@ -1,5 +1,5 @@
 # Copyright 2019 Klas Lindfors <klali@avm.se>
-# Modified 2021 Børge Nordli <bnordli@gmail.com>
+# Modified 2021 by Børge Nordli <bnordli@gmail.com>
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
