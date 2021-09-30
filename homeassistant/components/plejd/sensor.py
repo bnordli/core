@@ -32,7 +32,7 @@ class PlejdRotaryButton(SensorEntity, RestoreEntity):
     _attr_assumed_state = False
     _attr_should_poll = False
     _attr_state_class = STATE_CLASS_MEASUREMENT
-    _attr_unit_of_measurement = PERCENTAGE
+    _attr_native_unit_of_measurement = PERCENTAGE
     _attr_icon = "hass:radiobox-blank"
 
     def __init__(self, name: str, identity: int, service: PlejdService):
@@ -46,12 +46,12 @@ class PlejdRotaryButton(SensorEntity, RestoreEntity):
         await super().async_added_to_hass()
         old = await self.async_get_last_state()
         if old is not None:
-            self._attr_state = old.state
+            self._attr_native_value = old.state
 
     @callback
     def update_state(self, state: bool, brightness: int = 0) -> None:
         """Update the state of the button."""
-        self._attr_state = int(round(100 * (brightness / 0xFFFF)))
+        self._attr_native_value = int(round(100 * (brightness / 0xFFFF)))
         _LOGGER.debug(
             f"{self.name} ({self.unique_id}) turned to brightness {self.state}"
         )
