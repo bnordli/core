@@ -1,18 +1,20 @@
 """Support for Google Nest SDM Cameras."""
 from __future__ import annotations
 
+from collections.abc import Callable
 import datetime
 import logging
-from typing import Any, Callable
+from typing import Any
 
 from google_nest_sdm.camera_traits import (
     CameraEventImageTrait,
     CameraImageTrait,
     CameraLiveStreamTrait,
-    CameraMotionTrait,
+    EventImageGenerator,
     RtspStream,
 )
 from google_nest_sdm.device import Device
+from google_nest_sdm.event import ImageEventBase
 from google_nest_sdm.exceptions import GoogleNestException
 from haffmpeg.tools import IMAGE_JPEG
 
@@ -121,6 +123,7 @@ class NestCamera(Camera):
             _LOGGER.debug("Fetching stream url")
             self._stream = await trait.generate_rtsp_stream()
             self._schedule_stream_refresh()
+        assert self._stream
         if self._stream.expires_at < utcnow():
             _LOGGER.warning("Stream already expired")
         return self._stream.rtsp_stream_url
@@ -178,7 +181,9 @@ class NestCamera(Camera):
             self._device.add_update_listener(self.async_write_ha_state)
         )
 
-    async def async_camera_image(self) -> bytes | None:
+    async def async_camera_image(
+        self, width: int | None = None, height: int | None = None
+    ) -> bytes | None:
         """Return bytes of camera image."""
         # Returns the snapshot of the last event for ~30 seconds after the event
         active_event_image = await self._async_active_event_image()
@@ -198,7 +203,11 @@ class NestCamera(Camera):
         if not trait:
             return None
         # Reuse image bytes if they have already been fetched
-        event = trait.last_event
+        if not isinstance(trait, EventImageGenerator):
+            return None
+        event: ImageEventBase | None = trait.last_event
+        if not event:
+            return None
         if self._event_id is not None and self._event_id == event.event_id:
             return self._event_image_bytes
         _LOGGER.debug("Generating event image URL for event_id %s", event.event_id)
@@ -211,9 +220,10 @@ class NestCamera(Camera):
         return image_bytes
 
     async def _async_fetch_active_event_image(
-        self, trait: CameraMotionTrait
+        self, trait: EventImageGenerator
     ) -> bytes | None:
         """Return image bytes for an active event."""
+        # pylint: disable=no-self-use
         try:
             event_image = await trait.generate_active_event_image()
         except GoogleNestException as err:

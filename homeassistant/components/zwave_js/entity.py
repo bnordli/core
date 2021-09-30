@@ -15,6 +15,7 @@ from homeassistant.helpers.entity import Entity
 from .const import DOMAIN
 from .discovery import ZwaveDiscoveryInfo
 from .helpers import get_device_id, get_unique_id
+from .migrate import async_add_migration_entity_value
 
 LOGGER = logging.getLogger(__name__)
 
@@ -45,6 +46,9 @@ class ZWaveBaseEntity(Entity):
         self._attr_name = self.generate_name()
         self._attr_unique_id = get_unique_id(
             self.client.driver.controller.home_id, self.info.primary_value.value_id
+        )
+        self._attr_entity_registry_enabled_default = (
+            self.info.entity_registry_enabled_default
         )
         self._attr_assumed_state = self.info.assumed_state
         # device is precreated in main handler
@@ -104,6 +108,11 @@ class ZWaveBaseEntity(Entity):
                 f"{DOMAIN}_{self.unique_id}_poll_value",
                 self.async_poll_value,
             )
+        )
+
+        # Add legacy Z-Wave migration data.
+        await async_add_migration_entity_value(
+            self.hass, self.config_entry, self.entity_id, self.info
         )
 
     def generate_name(
