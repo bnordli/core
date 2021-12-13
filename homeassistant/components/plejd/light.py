@@ -58,10 +58,8 @@ class PlejdLight(LightEntity, RestoreEntity):
             if old.attributes.get(ATTR_BRIGHTNESS) is not None:
                 self._attr_brightness = old.attributes[ATTR_BRIGHTNESS]
                 self._attr_supported_color_modes = {COLOR_MODE_BRIGHTNESS}
-                self._attr_color_mode = COLOR_MODE_BRIGHTNESS
             else:
                 self._attr_supported_color_modes = {COLOR_MODE_ONOFF}
-                self._attr_color_mode = COLOR_MODE_ONOFF
         else:
             self._attr_is_on = False
 
@@ -78,7 +76,6 @@ class PlejdLight(LightEntity, RestoreEntity):
             )
             self._attr_brightness = brightness
             self._attr_supported_color_modes = {COLOR_MODE_BRIGHTNESS}
-            self._attr_color_mode = COLOR_MODE_BRIGHTNESS
         else:
             if brightness:
                 _LOGGER.debug(
@@ -87,7 +84,6 @@ class PlejdLight(LightEntity, RestoreEntity):
             else:
                 _LOGGER.debug(f"{self.name} ({self.unique_id}) turned {self.state}")
             self._attr_supported_color_modes = {COLOR_MODE_ONOFF}
-            self._attr_color_mode = COLOR_MODE_ONOFF
         self._last_brightness = brightness
         self.async_schedule_update_ha_state()
 
