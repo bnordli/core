@@ -367,8 +367,10 @@ class PlejdService:
                     _LOGGER.debug(f"No match for device '{id:02x}'")
                     return
                 state = bool(dec[5])
-                dim = int.from_bytes(dec[6:8], "little")
-                device.update_state(state, dim)
+                # Plejd brightness is two bytes, but HA brightness is one byte,
+                # so we just take the most significant bit.
+                brightness = dec[7]
+                device.update_state(state, brightness)
             else:
                 _LOGGER.debug(f"No match for command '{command.hex()}'")
 
@@ -377,10 +379,10 @@ class PlejdService:
             _LOGGER.debug(f"Received state {value.hex()}")
             # One or two messages of format
             # 0123456789
-            # is???dd???
+            # is???bb???
             # i = device_id
             # s = state (0 or 1)
-            # d = brightness
+            # b = brightness
             if len(value) != 20 and len(value) != 10:
                 _LOGGER.warning(
                     f"Unknown length data received for state: '{value.hex()}'"
@@ -395,7 +397,9 @@ class PlejdService:
                 if m[0] not in self._devices:
                     continue
                 state = bool(m[1])
-                brightness = int.from_bytes(m[5:7], "little")
+                # Plejd brightness is two bytes, but HA brightness is one byte,
+                # so we just take the most significant bit
+                brightness = m[6]
                 device = self._devices[m[0]]
                 if not brightness:
                     device.update_state(state)

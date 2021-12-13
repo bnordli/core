@@ -40,7 +40,7 @@ class PlejdLight(LightEntity, RestoreEntity):
     _attr_should_poll = False
     _attr_assumed_state = False
     _hex_id: str
-    _brightness: Optional[int] = None
+    _last_brightness: Optional[int] = None
 
     def __init__(self, name: str, identity: int, service: PlejdService) -> None:
         """Initialize the light."""
@@ -56,57 +56,55 @@ class PlejdLight(LightEntity, RestoreEntity):
         if old is not None:
             self._attr_is_on = old.state == STATE_ON
             if old.attributes.get(ATTR_BRIGHTNESS) is not None:
+                self._attr_brightness = old.attributes[ATTR_BRIGHTNESS]
                 self._attr_supported_color_modes = {COLOR_MODE_BRIGHTNESS}
                 self._attr_color_mode = COLOR_MODE_BRIGHTNESS
-                brightness = int(old.attributes[ATTR_BRIGHTNESS])
-                self._brightness = brightness << 8 | brightness
             else:
                 self._attr_supported_color_modes = {COLOR_MODE_ONOFF}
                 self._attr_color_mode = COLOR_MODE_ONOFF
         else:
             self._attr_is_on = False
 
-    @property
-    def brightness(self) -> Optional[int]:
-        """Return the current brightness of this light."""
-        if self._brightness:
-            return self._brightness >> 8
-        else:
-            return None
-
     @callback
     def update_state(self, state: bool, brightness: Optional[int] = None) -> None:
         """Update the state of the light."""
         self._attr_is_on = state
-        self._brightness = brightness
-        if brightness:
+        if self._attr_brightness or (
+            brightness and self._last_brightness and brightness != self._last_brightness
+        ):
             _LOGGER.debug(
-                f"{self.name} ({self.unique_id}) turned {self.state} with brightness {brightness:04x}"
+                f"{self.name} ({self.unique_id}) turned {self.state} with brightness {brightness}"
             )
+            self._attr_brightness = brightness
             self._attr_supported_color_modes = {COLOR_MODE_BRIGHTNESS}
             self._attr_color_mode = COLOR_MODE_BRIGHTNESS
         else:
-            _LOGGER.debug(f"{self.name} ({self.unique_id}) turned {self.state}")
+            if brightness:
+                _LOGGER.debug(
+                    f"{self.name} ({self.unique_id}) turned {self.state} with (ignored) brightness {brightness}"
+                )
+            else:
+                _LOGGER.debug(f"{self.name} ({self.unique_id}) turned {self.state}")
             self._attr_supported_color_modes = {COLOR_MODE_ONOFF}
             self._attr_color_mode = COLOR_MODE_ONOFF
+        self._last_brightness = brightness
         self.async_schedule_update_ha_state()
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the light on."""
         brightness = kwargs.get(ATTR_BRIGHTNESS)
-        if brightness is None:
-            self._brightness = None
-            payload = binascii.a2b_hex(f"{self._hex_id}0110009701")
-        else:
-            # since ha brightness is just one byte we shift it up and or it in to be able to get max val
-            self._brightness = brightness << 8 | brightness
+        if self._attr_brightness:
+            self._attr_brightness = brightness
+            # Plejd brightness is two bytes, but HA brightness is one byte.
             payload = binascii.a2b_hex(
-                f"{self._hex_id}0110009801{self._brightness:04x}"
+                f"{self._hex_id}0110009801{brightness:02x}{brightness:02x}"
             )
-
-        _LOGGER.debug(
-            f"Turning on {self.name} ({self.unique_id}) with brightness {brightness or 0:02x}"
-        )
+            _LOGGER.debug(
+                f"Turning on {self.name} ({self.unique_id}) with brightness {brightness}"
+            )
+        else:
+            payload = binascii.a2b_hex(f"{self._hex_id}0110009701")
+            _LOGGER.debug(f"Turning on {self.name} ({self.unique_id})")
         await self._service._write(payload)
 
     async def async_turn_off(self, **kwargs) -> None:

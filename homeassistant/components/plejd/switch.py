@@ -52,7 +52,7 @@ class PlejdSwitch(SwitchEntity, RestoreEntity):
             self._attr_is_on = old.state == STATE_ON
 
     @callback
-    def update_state(self, state: bool) -> None:
+    def update_state(self, state: bool, brightness: Optional[int] = None) -> None:
         """Update the state of the switch."""
         self._attr_is_on = state
         _LOGGER.debug(f"{self.name} ({self.unique_id}) turned {self.state}")
