@@ -72,6 +72,7 @@ class PlejdLight(LightEntity, RestoreEntity):
         if self._attr_brightness or (
             brightness and self._last_brightness and brightness != self._last_brightness
         ):
+            brightness = brightness or 0
             _LOGGER.debug(
                 f"{self.name} ({self.unique_id}) turned {self.state} with brightness {brightness}"
             )
@@ -94,7 +95,7 @@ class PlejdLight(LightEntity, RestoreEntity):
         """Turn the light on."""
         brightness = kwargs.get(ATTR_BRIGHTNESS)
         if self._attr_brightness:
-            self._attr_brightness = brightness
+            brightness = brightness or 0
             # Plejd brightness is two bytes, but HA brightness is one byte.
             payload = binascii.a2b_hex(
                 f"{self._hex_id}0110009801{brightness:02x}{brightness:02x}"
@@ -102,6 +103,7 @@ class PlejdLight(LightEntity, RestoreEntity):
             _LOGGER.debug(
                 f"Turning on {self.name} ({self.unique_id}) with brightness {brightness}"
             )
+            self._attr_brightness = brightness
         else:
             payload = binascii.a2b_hex(f"{self._hex_id}0110009701")
             _LOGGER.debug(f"Turning on {self.name} ({self.unique_id})")
