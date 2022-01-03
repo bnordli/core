@@ -10,7 +10,7 @@ from homeassistant.components.cover import (
     ATTR_POSITION,
     ATTR_TILT_POSITION,
 )
-from homeassistant.components.mqtt.const import CONF_STATE_TOPIC
+from homeassistant.components.mqtt import CONF_STATE_TOPIC
 from homeassistant.components.mqtt.cover import (
     CONF_GET_POSITION_TEMPLATE,
     CONF_GET_POSITION_TOPIC,
@@ -61,6 +61,7 @@ from .test_common import (
     help_test_entity_device_info_with_identifier,
     help_test_entity_id_update_discovery_update,
     help_test_entity_id_update_subscriptions,
+    help_test_publishing_with_custom_encoding,
     help_test_setting_attribute_via_mqtt_json_message,
     help_test_setting_attribute_with_template,
     help_test_setting_blocked_attribute_via_mqtt_json_message,
@@ -2401,10 +2402,10 @@ async def test_discovery_removal_cover(hass, mqtt_mock, caplog):
 
 async def test_discovery_update_cover(hass, mqtt_mock, caplog):
     """Test update of discovered cover."""
-    data1 = '{ "name": "Beer", "command_topic": "test_topic" }'
-    data2 = '{ "name": "Milk", "command_topic": "test_topic" }'
+    config1 = {"name": "Beer", "command_topic": "test_topic"}
+    config2 = {"name": "Milk", "command_topic": "test_topic"}
     await help_test_discovery_update(
-        hass, mqtt_mock, caplog, cover.DOMAIN, data1, data2
+        hass, mqtt_mock, caplog, cover.DOMAIN, config1, config2
     )
 
 
@@ -3056,4 +3057,59 @@ async def test_tilt_status_template_without_tilt_status_topic_topic(
     assert (
         f"'{CONF_TILT_STATUS_TEMPLATE}' must be set together with '{CONF_TILT_STATUS_TOPIC}'."
         in caplog.text
+    )
+
+
+@pytest.mark.parametrize(
+    "service,topic,parameters,payload,template",
+    [
+        (
+            SERVICE_OPEN_COVER,
+            "command_topic",
+            None,
+            "OPEN",
+            None,
+        ),
+        (
+            SERVICE_SET_COVER_POSITION,
+            "set_position_topic",
+            {ATTR_POSITION: "50"},
+            50,
+            "set_position_template",
+        ),
+        (
+            SERVICE_SET_COVER_TILT_POSITION,
+            "tilt_command_topic",
+            {ATTR_TILT_POSITION: "45"},
+            45,
+            "tilt_command_template",
+        ),
+    ],
+)
+async def test_publishing_with_custom_encoding(
+    hass,
+    mqtt_mock,
+    caplog,
+    service,
+    topic,
+    parameters,
+    payload,
+    template,
+):
+    """Test publishing MQTT payload with different encoding."""
+    domain = cover.DOMAIN
+    config = DEFAULT_CONFIG[domain]
+    config["position_topic"] = "some-position-topic"
+
+    await help_test_publishing_with_custom_encoding(
+        hass,
+        mqtt_mock,
+        caplog,
+        domain,
+        config,
+        service,
+        topic,
+        parameters,
+        payload,
+        template,
     )

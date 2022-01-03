@@ -41,6 +41,7 @@ from .test_common import (
     help_test_entity_device_info_with_identifier,
     help_test_entity_id_update_discovery_update,
     help_test_entity_id_update_subscriptions,
+    help_test_publishing_with_custom_encoding,
     help_test_setting_attribute_via_mqtt_json_message,
     help_test_setting_attribute_with_template,
     help_test_setting_blocked_attribute_via_mqtt_json_message,
@@ -651,10 +652,10 @@ async def test_discovery_removal_vacuum(hass, mqtt_mock, caplog):
 
 async def test_discovery_update_vacuum(hass, mqtt_mock, caplog):
     """Test update of discovered vacuum."""
-    data1 = '{ "name": "Beer",' '  "command_topic": "test_topic" }'
-    data2 = '{ "name": "Milk",' '  "command_topic": "test_topic" }'
+    config1 = {"name": "Beer", " " "command_topic": "test_topic"}
+    config2 = {"name": "Milk", " " "command_topic": "test_topic"}
     await help_test_discovery_update(
-        hass, mqtt_mock, caplog, vacuum.DOMAIN, data1, data2
+        hass, mqtt_mock, caplog, vacuum.DOMAIN, config1, config2
     )
 
 
@@ -745,4 +746,79 @@ async def test_entity_debug_info_message(hass, mqtt_mock):
     }
     await help_test_entity_debug_info_message(
         hass, mqtt_mock, vacuum.DOMAIN, config, "test-topic"
+    )
+
+
+@pytest.mark.parametrize(
+    "service,topic,parameters,payload,template",
+    [
+        (
+            vacuum.SERVICE_TURN_ON,
+            "command_topic",
+            None,
+            "turn_on",
+            None,
+        ),
+        (
+            vacuum.SERVICE_CLEAN_SPOT,
+            "command_topic",
+            None,
+            "clean_spot",
+            None,
+        ),
+        (
+            vacuum.SERVICE_SET_FAN_SPEED,
+            "set_fan_speed_topic",
+            {"fan_speed": "medium"},
+            "medium",
+            None,
+        ),
+        (
+            vacuum.SERVICE_SEND_COMMAND,
+            "send_command_topic",
+            {"command": "custom command"},
+            "custom command",
+            None,
+        ),
+        (
+            vacuum.SERVICE_TURN_OFF,
+            "command_topic",
+            None,
+            "turn_off",
+            None,
+        ),
+    ],
+)
+async def test_publishing_with_custom_encoding(
+    hass,
+    mqtt_mock,
+    caplog,
+    service,
+    topic,
+    parameters,
+    payload,
+    template,
+):
+    """Test publishing MQTT payload with different encoding."""
+    domain = vacuum.DOMAIN
+    config = deepcopy(DEFAULT_CONFIG)
+    config["supported_features"] = [
+        "turn_on",
+        "turn_off",
+        "clean_spot",
+        "fan_speed",
+        "send_command",
+    ]
+
+    await help_test_publishing_with_custom_encoding(
+        hass,
+        mqtt_mock,
+        caplog,
+        domain,
+        config,
+        service,
+        topic,
+        parameters,
+        payload,
+        template,
     )

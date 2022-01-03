@@ -5,6 +5,7 @@ import voluptuous as vol
 
 from homeassistant.components.vacuum import (
     ATTR_STATUS,
+    ENTITY_ID_FORMAT,
     SUPPORT_BATTERY,
     SUPPORT_CLEAN_SPOT,
     SUPPORT_FAN_SPEED,
@@ -25,6 +26,7 @@ from homeassistant.helpers.icon import icon_for_battery_level
 
 from .. import subscription
 from ... import mqtt
+from ..const import CONF_COMMAND_TOPIC, CONF_ENCODING, CONF_QOS, CONF_RETAIN
 from ..debug_info import log_messages
 from ..mixins import MQTT_ENTITY_COMMON_SCHEMA, MqttEntity
 from .const import MQTT_VACUUM_ATTRIBUTES_BLOCKED
@@ -147,13 +149,15 @@ PLATFORM_SCHEMA_LEGACY = (
             vol.Optional(
                 CONF_SUPPORTED_FEATURES, default=DEFAULT_SERVICE_STRINGS
             ): vol.All(cv.ensure_list, [vol.In(STRING_TO_SERVICE.keys())]),
-            vol.Optional(mqtt.CONF_COMMAND_TOPIC): mqtt.valid_publish_topic,
-            vol.Optional(mqtt.CONF_RETAIN, default=DEFAULT_RETAIN): cv.boolean,
+            vol.Optional(CONF_COMMAND_TOPIC): mqtt.valid_publish_topic,
+            vol.Optional(CONF_RETAIN, default=DEFAULT_RETAIN): cv.boolean,
         }
     )
     .extend(MQTT_ENTITY_COMMON_SCHEMA.schema)
     .extend(MQTT_VACUUM_SCHEMA.schema)
 )
+
+DISCOVERY_SCHEMA_LEGACY = PLATFORM_SCHEMA_LEGACY.extend({}, extra=vol.REMOVE_EXTRA)
 
 
 async def async_setup_entity_legacy(
@@ -166,6 +170,7 @@ async def async_setup_entity_legacy(
 class MqttVacuum(MqttEntity, VacuumEntity):
     """Representation of a MQTT-controlled legacy vacuum."""
 
+    _entity_id_format = ENTITY_ID_FORMAT
     _attributes_extra_blocked = MQTT_LEGACY_VACUUM_ATTRIBUTES_BLOCKED
 
     def __init__(self, hass, config, config_entry, discovery_data):
@@ -184,7 +189,7 @@ class MqttVacuum(MqttEntity, VacuumEntity):
     @staticmethod
     def config_schema():
         """Return the config schema."""
-        return PLATFORM_SCHEMA_LEGACY
+        return DISCOVERY_SCHEMA_LEGACY
 
     def _setup_from_config(self, config):
         supported_feature_strings = config[CONF_SUPPORTED_FEATURES]
@@ -192,10 +197,11 @@ class MqttVacuum(MqttEntity, VacuumEntity):
             supported_feature_strings, STRING_TO_SERVICE
         )
         self._fan_speed_list = config[CONF_FAN_SPEED_LIST]
-        self._qos = config[mqtt.CONF_QOS]
-        self._retain = config[mqtt.CONF_RETAIN]
+        self._qos = config[CONF_QOS]
+        self._retain = config[CONF_RETAIN]
+        self._encoding = config[CONF_ENCODING]
 
-        self._command_topic = config.get(mqtt.CONF_COMMAND_TOPIC)
+        self._command_topic = config.get(CONF_COMMAND_TOPIC)
         self._set_fan_speed_topic = config.get(CONF_SET_FAN_SPEED_TOPIC)
         self._send_command_topic = config.get(CONF_SEND_COMMAND_TOPIC)
 
@@ -377,12 +383,13 @@ class MqttVacuum(MqttEntity, VacuumEntity):
         if self.supported_features & SUPPORT_TURN_ON == 0:
             return
 
-        mqtt.async_publish(
+        await mqtt.async_publish(
             self.hass,
             self._command_topic,
             self._payloads[CONF_PAYLOAD_TURN_ON],
             self._qos,
             self._retain,
+            self._encoding,
         )
         self._status = "Cleaning"
         self.async_write_ha_state()
@@ -392,12 +399,13 @@ class MqttVacuum(MqttEntity, VacuumEntity):
         if self.supported_features & SUPPORT_TURN_OFF == 0:
             return None
 
-        mqtt.async_publish(
+        await mqtt.async_publish(
             self.hass,
             self._command_topic,
             self._payloads[CONF_PAYLOAD_TURN_OFF],
             self._qos,
             self._retain,
+            self._encoding,
         )
         self._status = "Turning Off"
         self.async_write_ha_state()
@@ -407,12 +415,13 @@ class MqttVacuum(MqttEntity, VacuumEntity):
         if self.supported_features & SUPPORT_STOP == 0:
             return None
 
-        mqtt.async_publish(
+        await mqtt.async_publish(
             self.hass,
             self._command_topic,
             self._payloads[CONF_PAYLOAD_STOP],
             self._qos,
             self._retain,
+            self._encoding,
         )
         self._status = "Stopping the current task"
         self.async_write_ha_state()
@@ -422,12 +431,13 @@ class MqttVacuum(MqttEntity, VacuumEntity):
         if self.supported_features & SUPPORT_CLEAN_SPOT == 0:
             return None
 
-        mqtt.async_publish(
+        await mqtt.async_publish(
             self.hass,
             self._command_topic,
             self._payloads[CONF_PAYLOAD_CLEAN_SPOT],
             self._qos,
             self._retain,
+            self._encoding,
         )
         self._status = "Cleaning spot"
         self.async_write_ha_state()
@@ -437,12 +447,13 @@ class MqttVacuum(MqttEntity, VacuumEntity):
         if self.supported_features & SUPPORT_LOCATE == 0:
             return None
 
-        mqtt.async_publish(
+        await mqtt.async_publish(
             self.hass,
             self._command_topic,
             self._payloads[CONF_PAYLOAD_LOCATE],
             self._qos,
             self._retain,
+            self._encoding,
         )
         self._status = "Hi, I'm over here!"
         self.async_write_ha_state()
@@ -452,12 +463,13 @@ class MqttVacuum(MqttEntity, VacuumEntity):
         if self.supported_features & SUPPORT_PAUSE == 0:
             return None
 
-        mqtt.async_publish(
+        await mqtt.async_publish(
             self.hass,
             self._command_topic,
             self._payloads[CONF_PAYLOAD_START_PAUSE],
             self._qos,
             self._retain,
+            self._encoding,
         )
         self._status = "Pausing/Resuming cleaning..."
         self.async_write_ha_state()
@@ -467,12 +479,13 @@ class MqttVacuum(MqttEntity, VacuumEntity):
         if self.supported_features & SUPPORT_RETURN_HOME == 0:
             return None
 
-        mqtt.async_publish(
+        await mqtt.async_publish(
             self.hass,
             self._command_topic,
             self._payloads[CONF_PAYLOAD_RETURN_TO_BASE],
             self._qos,
             self._retain,
+            self._encoding,
         )
         self._status = "Returning home..."
         self.async_write_ha_state()
@@ -484,8 +497,13 @@ class MqttVacuum(MqttEntity, VacuumEntity):
         ) or fan_speed not in self._fan_speed_list:
             return None
 
-        mqtt.async_publish(
-            self.hass, self._set_fan_speed_topic, fan_speed, self._qos, self._retain
+        await mqtt.async_publish(
+            self.hass,
+            self._set_fan_speed_topic,
+            fan_speed,
+            self._qos,
+            self._retain,
+            self._encoding,
         )
         self._status = f"Setting fan to {fan_speed}..."
         self.async_write_ha_state()
@@ -500,8 +518,13 @@ class MqttVacuum(MqttEntity, VacuumEntity):
             message = json.dumps(message)
         else:
             message = command
-        mqtt.async_publish(
-            self.hass, self._send_command_topic, message, self._qos, self._retain
+        await mqtt.async_publish(
+            self.hass,
+            self._send_command_topic,
+            message,
+            self._qos,
+            self._retain,
+            self._encoding,
         )
         self._status = f"Sending command {message}..."
         self.async_write_ha_state()

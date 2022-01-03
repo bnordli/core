@@ -1,13 +1,17 @@
 """The tests for the MQTT switch platform."""
 import copy
-import json
 from unittest.mock import patch
 
 import pytest
 
 from homeassistant.components import switch
 from homeassistant.components.mqtt.switch import MQTT_SWITCH_ATTRIBUTES_BLOCKED
-from homeassistant.const import ATTR_ASSUMED_STATE, STATE_OFF, STATE_ON
+from homeassistant.const import (
+    ATTR_ASSUMED_STATE,
+    ATTR_DEVICE_CLASS,
+    STATE_OFF,
+    STATE_ON,
+)
 import homeassistant.core as ha
 from homeassistant.setup import async_setup_component
 
@@ -28,6 +32,7 @@ from .test_common import (
     help_test_entity_device_info_with_identifier,
     help_test_entity_id_update_discovery_update,
     help_test_entity_id_update_subscriptions,
+    help_test_publishing_with_custom_encoding,
     help_test_setting_attribute_via_mqtt_json_message,
     help_test_setting_attribute_with_template,
     help_test_setting_blocked_attribute_via_mqtt_json_message,
@@ -57,6 +62,7 @@ async def test_controlling_state_via_topic(hass, mqtt_mock):
                 "command_topic": "command-topic",
                 "payload_on": 1,
                 "payload_off": 0,
+                "device_class": "switch",
             }
         },
     )
@@ -64,6 +70,7 @@ async def test_controlling_state_via_topic(hass, mqtt_mock):
 
     state = hass.states.get("switch.test")
     assert state.state == STATE_OFF
+    assert state.attributes.get(ATTR_DEVICE_CLASS) == "switch"
     assert not state.attributes.get(ATTR_ASSUMED_STATE)
 
     async_fire_mqtt_message(hass, "state-topic", "1")
@@ -339,15 +346,13 @@ async def test_discovery_update_switch_topic_template(hass, mqtt_mock, caplog):
         ([("switch/state2", '{"state2":{"state":"OFF"}}')], "off", None),
     ]
 
-    data1 = json.dumps(config1)
-    data2 = json.dumps(config2)
     await help_test_discovery_update(
         hass,
         mqtt_mock,
         caplog,
         switch.DOMAIN,
-        data1,
-        data2,
+        config1,
+        config2,
         state_data1=state_data1,
         state_data2=state_data2,
     )
@@ -374,15 +379,13 @@ async def test_discovery_update_switch_template(hass, mqtt_mock, caplog):
         ([("switch/state1", '{"state2":{"state":"OFF"}}')], "off", None),
     ]
 
-    data1 = json.dumps(config1)
-    data2 = json.dumps(config2)
     await help_test_discovery_update(
         hass,
         mqtt_mock,
         caplog,
         switch.DOMAIN,
-        data1,
-        data2,
+        config1,
+        config2,
         state_data1=state_data1,
         state_data2=state_data2,
     )
@@ -392,6 +395,7 @@ async def test_discovery_update_unchanged_switch(hass, mqtt_mock, caplog):
     """Test update of discovered switch."""
     data1 = (
         '{ "name": "Beer",'
+        '  "device_class": "switch",'
         '  "state_topic": "test_topic",'
         '  "command_topic": "test_topic" }'
     )
@@ -463,4 +467,51 @@ async def test_entity_debug_info_message(hass, mqtt_mock):
     """Test MQTT debug info."""
     await help_test_entity_debug_info_message(
         hass, mqtt_mock, switch.DOMAIN, DEFAULT_CONFIG
+    )
+
+
+@pytest.mark.parametrize(
+    "service,topic,parameters,payload,template",
+    [
+        (
+            switch.SERVICE_TURN_ON,
+            "command_topic",
+            None,
+            "ON",
+            None,
+        ),
+        (
+            switch.SERVICE_TURN_OFF,
+            "command_topic",
+            None,
+            "OFF",
+            None,
+        ),
+    ],
+)
+async def test_publishing_with_custom_encoding(
+    hass,
+    mqtt_mock,
+    caplog,
+    service,
+    topic,
+    parameters,
+    payload,
+    template,
+):
+    """Test publishing MQTT payload with different encoding."""
+    domain = switch.DOMAIN
+    config = DEFAULT_CONFIG[domain]
+
+    await help_test_publishing_with_custom_encoding(
+        hass,
+        mqtt_mock,
+        caplog,
+        domain,
+        config,
+        service,
+        topic,
+        parameters,
+        payload,
+        template,
     )
