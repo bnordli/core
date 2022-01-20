@@ -54,6 +54,7 @@ from .test_common import (
     help_test_discovery_update,
     help_test_discovery_update_attr,
     help_test_discovery_update_unchanged,
+    help_test_encoding_subscribable_topics,
     help_test_entity_debug_info_message,
     help_test_entity_device_info_remove,
     help_test_entity_device_info_update,
@@ -62,6 +63,7 @@ from .test_common import (
     help_test_entity_id_update_discovery_update,
     help_test_entity_id_update_subscriptions,
     help_test_publishing_with_custom_encoding,
+    help_test_reloadable,
     help_test_setting_attribute_via_mqtt_json_message,
     help_test_setting_attribute_with_template,
     help_test_setting_blocked_attribute_via_mqtt_json_message,
@@ -351,7 +353,9 @@ async def test_sending_mqtt_commands_and_optimistic(hass, mqtt_mock):
                     "{{ white_value|d }},"
                     "{{ red|d }}-"
                     "{{ green|d }}-"
-                    "{{ blue|d }}",
+                    "{{ blue|d }},"
+                    "{{ hue|d }}-"
+                    "{{ sat|d }}",
                     "command_off_template": "off",
                     "effect_list": ["colorloop", "random"],
                     "optimistic": True,
@@ -386,7 +390,7 @@ async def test_sending_mqtt_commands_and_optimistic(hass, mqtt_mock):
 
     await common.async_turn_on(hass, "light.test")
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,,,,--", 2, False
+        "test_light_rgb/set", "on,,,,--,-", 2, False
     )
     mqtt_mock.async_publish.reset_mock()
     state = hass.states.get("light.test")
@@ -395,7 +399,7 @@ async def test_sending_mqtt_commands_and_optimistic(hass, mqtt_mock):
     # Set color_temp
     await common.async_turn_on(hass, "light.test", color_temp=70)
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,,70,,--", 2, False
+        "test_light_rgb/set", "on,,70,,--,-", 2, False
     )
     mqtt_mock.async_publish.reset_mock()
     state = hass.states.get("light.test")
@@ -405,7 +409,7 @@ async def test_sending_mqtt_commands_and_optimistic(hass, mqtt_mock):
     # Set full brightness
     await common.async_turn_on(hass, "light.test", brightness=255)
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,255,,,--", 2, False
+        "test_light_rgb/set", "on,255,,,--,-", 2, False
     )
     mqtt_mock.async_publish.reset_mock()
     state = hass.states.get("light.test")
@@ -416,7 +420,7 @@ async def test_sending_mqtt_commands_and_optimistic(hass, mqtt_mock):
         hass, "light.test", rgb_color=[255, 128, 0], white_value=80
     )
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,,,80,255-128-0", 2, False
+        "test_light_rgb/set", "on,,,80,255-128-0,30.118-100.0", 2, False
     )
     mqtt_mock.async_publish.reset_mock()
     state = hass.states.get("light.test")
@@ -427,7 +431,7 @@ async def test_sending_mqtt_commands_and_optimistic(hass, mqtt_mock):
     # Full brightness - normalization of RGB values sent over MQTT
     await common.async_turn_on(hass, "light.test", rgb_color=[128, 64, 0])
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,,,,255-127-0", 2, False
+        "test_light_rgb/set", "on,,,,255-127-0,30.0-100.0", 2, False
     )
     mqtt_mock.async_publish.reset_mock()
     state = hass.states.get("light.test")
@@ -437,7 +441,7 @@ async def test_sending_mqtt_commands_and_optimistic(hass, mqtt_mock):
     # Set half brightness
     await common.async_turn_on(hass, "light.test", brightness=128)
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,128,,,--", 2, False
+        "test_light_rgb/set", "on,128,,,--,-", 2, False
     )
     mqtt_mock.async_publish.reset_mock()
     state = hass.states.get("light.test")
@@ -448,7 +452,7 @@ async def test_sending_mqtt_commands_and_optimistic(hass, mqtt_mock):
         hass, "light.test", rgb_color=[0, 255, 128], white_value=40
     )
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,,,40,0-128-64", 2, False
+        "test_light_rgb/set", "on,,,40,0-128-64,150.118-100.0", 2, False
     )
     mqtt_mock.async_publish.reset_mock()
     state = hass.states.get("light.test")
@@ -461,7 +465,7 @@ async def test_sending_mqtt_commands_and_optimistic(hass, mqtt_mock):
         hass, "light.test", rgb_color=[0, 32, 16], white_value=40
     )
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,,,40,0-128-64", 2, False
+        "test_light_rgb/set", "on,,,40,0-128-64,150.0-100.0", 2, False
     )
     mqtt_mock.async_publish.reset_mock()
     state = hass.states.get("light.test")
@@ -492,7 +496,9 @@ async def test_sending_mqtt_commands_non_optimistic_brightness_template(
                     "{{ white_value|d }},"
                     "{{ red|d }}-"
                     "{{ green|d }}-"
-                    "{{ blue|d }}",
+                    "{{ blue|d }},"
+                    "{{ hue }}-"
+                    "{{ sat }}",
                     "command_off_template": "off",
                     "state_template": '{{ value.split(",")[0] }}',
                     "brightness_template": '{{ value.split(",")[1] }}',
@@ -526,7 +532,7 @@ async def test_sending_mqtt_commands_non_optimistic_brightness_template(
 
     await common.async_turn_on(hass, "light.test")
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,,,,--", 0, False
+        "test_light_rgb/set", "on,,,,--,-", 0, False
     )
     mqtt_mock.async_publish.reset_mock()
     state = hass.states.get("light.test")
@@ -535,7 +541,7 @@ async def test_sending_mqtt_commands_non_optimistic_brightness_template(
     # Set color_temp
     await common.async_turn_on(hass, "light.test", color_temp=70)
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,,70,,--", 0, False
+        "test_light_rgb/set", "on,,70,,--,-", 0, False
     )
     mqtt_mock.async_publish.reset_mock()
     state = hass.states.get("light.test")
@@ -545,7 +551,7 @@ async def test_sending_mqtt_commands_non_optimistic_brightness_template(
     # Set full brightness
     await common.async_turn_on(hass, "light.test", brightness=255)
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,255,,,--", 0, False
+        "test_light_rgb/set", "on,255,,,--,-", 0, False
     )
     mqtt_mock.async_publish.reset_mock()
     state = hass.states.get("light.test")
@@ -557,7 +563,7 @@ async def test_sending_mqtt_commands_non_optimistic_brightness_template(
         hass, "light.test", rgb_color=[255, 128, 0], white_value=80
     )
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,,,80,255-128-0", 0, False
+        "test_light_rgb/set", "on,,,80,255-128-0,30.118-100.0", 0, False
     )
     mqtt_mock.async_publish.reset_mock()
     state = hass.states.get("light.test")
@@ -568,14 +574,14 @@ async def test_sending_mqtt_commands_non_optimistic_brightness_template(
     # Full brightness - normalization of RGB values sent over MQTT
     await common.async_turn_on(hass, "light.test", rgb_color=[128, 64, 0])
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,,,,255-127-0", 0, False
+        "test_light_rgb/set", "on,,,,255-127-0,30.0-100.0", 0, False
     )
     mqtt_mock.async_publish.reset_mock()
 
     # Set half brightness
     await common.async_turn_on(hass, "light.test", brightness=128)
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,128,,,--", 0, False
+        "test_light_rgb/set", "on,128,,,--,-", 0, False
     )
     mqtt_mock.async_publish.reset_mock()
 
@@ -584,7 +590,7 @@ async def test_sending_mqtt_commands_non_optimistic_brightness_template(
         hass, "light.test", rgb_color=[0, 255, 128], white_value=40
     )
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,,,40,0-255-128", 0, False
+        "test_light_rgb/set", "on,,,40,0-255-128,150.118-100.0", 0, False
     )
     mqtt_mock.async_publish.reset_mock()
     state = hass.states.get("light.test")
@@ -594,7 +600,7 @@ async def test_sending_mqtt_commands_non_optimistic_brightness_template(
         hass, "light.test", rgb_color=[0, 32, 16], white_value=40
     )
     mqtt_mock.async_publish.assert_called_once_with(
-        "test_light_rgb/set", "on,,,40,0-255-127", 0, False
+        "test_light_rgb/set", "on,,,40,0-255-127,150.0-100.0", 0, False
     )
     mqtt_mock.async_publish.reset_mock()
     state = hass.states.get("light.test")
@@ -1145,4 +1151,37 @@ async def test_publishing_with_custom_encoding(
         template,
         tpl_par=tpl_par,
         tpl_output=tpl_output,
+    )
+
+
+async def test_reloadable(hass, mqtt_mock, caplog, tmp_path):
+    """Test reloading the MQTT platform."""
+    domain = light.DOMAIN
+    config = DEFAULT_CONFIG[domain]
+    await help_test_reloadable(hass, mqtt_mock, caplog, tmp_path, domain, config)
+
+
+@pytest.mark.parametrize(
+    "topic,value,attribute,attribute_value,init_payload",
+    [
+        ("state_topic", "on", None, "on", None),
+    ],
+)
+async def test_encoding_subscribable_topics(
+    hass, mqtt_mock, caplog, topic, value, attribute, attribute_value, init_payload
+):
+    """Test handling of incoming encoded payload."""
+    config = copy.deepcopy(DEFAULT_CONFIG[light.DOMAIN])
+    config["state_template"] = "{{ value }}"
+    await help_test_encoding_subscribable_topics(
+        hass,
+        mqtt_mock,
+        caplog,
+        light.DOMAIN,
+        config,
+        topic,
+        value,
+        attribute,
+        attribute_value,
+        init_payload,
     )
