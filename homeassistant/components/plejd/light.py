@@ -120,13 +120,14 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
         if id in plejdinfo["devices"]:
             _LOGGER.warning(f"Found duplicate definition for Plejd device {id}.")
             continue
-        if light_name.endswith(CONF_ONOFF):
-            dimmable = False
-            dimmable_text = ""
-            light_name.removesuffix(CONF_ONOFF)
-        else:
-            dimmable = True
-            dimmable_text = "dimmable "
+        dimmable = True
+        dimmable_text = "dimmable "
+        for oo in CONF_ONOFF:
+            if light_name.endswith(oo):
+                dimmable = False
+                dimmable_text = ""
+                light_name.removesuffix(oo)
+                break
 
         _LOGGER.debug(f"Adding {dimmable_text}light {id} ({light_name})")
         light = PlejdLight(light_name, id, dimmable, service)
