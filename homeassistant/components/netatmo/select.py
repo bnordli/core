@@ -37,9 +37,6 @@ async def async_setup_entry(
     """Set up the Netatmo energy platform schedule selector."""
     data_handler = hass.data[DOMAIN][entry.entry_id][DATA_HANDLER]
 
-    await data_handler.register_data_class(
-        CLIMATE_TOPOLOGY_CLASS_NAME, CLIMATE_TOPOLOGY_CLASS_NAME, None
-    )
     climate_topology = data_handler.data.get(CLIMATE_TOPOLOGY_CLASS_NAME)
 
     if not climate_topology or climate_topology.raw_data == {}:
@@ -49,7 +46,7 @@ async def async_setup_entry(
     for home_id in climate_topology.home_ids:
         signal_name = f"{CLIMATE_STATE_CLASS_NAME}-{home_id}"
 
-        await data_handler.register_data_class(
+        await data_handler.subscribe(
             CLIMATE_STATE_CLASS_NAME, signal_name, None, home_id=home_id
         )
 
@@ -66,12 +63,10 @@ async def async_setup_entry(
         NetatmoScheduleSelect(
             data_handler,
             home_id,
-            [
-                schedule.name
-                for schedule in hass.data[DOMAIN][DATA_SCHEDULES][home_id].values()
-            ],
+            [schedule.name for schedule in schedules.values()],
         )
-        for home_id in hass.data[DOMAIN][DATA_SCHEDULES]
+        for home_id, schedules in hass.data[DOMAIN][DATA_SCHEDULES].items()
+        if schedules
     ]
 
     _LOGGER.debug("Adding climate schedule select entities %s", entities)
@@ -97,7 +92,7 @@ class NetatmoScheduleSelect(NetatmoBase, SelectEntity):
 
         self._home = self._climate_state.homes[self._home_id]
 
-        self._data_classes.extend(
+        self._publishers.extend(
             [
                 {
                     "name": CLIMATE_TOPOLOGY_CLASS_NAME,

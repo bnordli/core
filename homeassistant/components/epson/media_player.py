@@ -28,15 +28,9 @@ from epson_projector.const import (
 )
 import voluptuous as vol
 
-from homeassistant.components.media_player import MediaPlayerEntity
-from homeassistant.components.media_player.const import (
-    SUPPORT_NEXT_TRACK,
-    SUPPORT_PREVIOUS_TRACK,
-    SUPPORT_SELECT_SOURCE,
-    SUPPORT_TURN_OFF,
-    SUPPORT_TURN_ON,
-    SUPPORT_VOLUME_MUTE,
-    SUPPORT_VOLUME_STEP,
+from homeassistant.components.media_player import (
+    MediaPlayerEntity,
+    MediaPlayerEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_OFF, STATE_ON
@@ -50,16 +44,6 @@ from homeassistant.helpers.entity_registry import async_get as async_get_entity_
 from .const import ATTR_CMODE, DOMAIN, SERVICE_SELECT_CMODE
 
 _LOGGER = logging.getLogger(__name__)
-
-SUPPORT_EPSON = (
-    SUPPORT_TURN_ON
-    | SUPPORT_TURN_OFF
-    | SUPPORT_SELECT_SOURCE
-    | SUPPORT_VOLUME_MUTE
-    | SUPPORT_VOLUME_STEP
-    | SUPPORT_NEXT_TRACK
-    | SUPPORT_PREVIOUS_TRACK
-)
 
 
 async def async_setup_entry(
@@ -88,6 +72,16 @@ async def async_setup_entry(
 
 class EpsonProjectorMediaPlayer(MediaPlayerEntity):
     """Representation of Epson Projector Device."""
+
+    _attr_supported_features = (
+        MediaPlayerEntityFeature.TURN_ON
+        | MediaPlayerEntityFeature.TURN_OFF
+        | MediaPlayerEntityFeature.SELECT_SOURCE
+        | MediaPlayerEntityFeature.VOLUME_MUTE
+        | MediaPlayerEntityFeature.VOLUME_STEP
+        | MediaPlayerEntityFeature.NEXT_TRACK
+        | MediaPlayerEntityFeature.PREVIOUS_TRACK
+    )
 
     def __init__(self, projector, name, unique_id, entry):
         """Initialize entity to control Epson projector."""
@@ -120,7 +114,7 @@ class EpsonProjectorMediaPlayer(MediaPlayerEntity):
             )
             return True
 
-    async def async_update(self):
+    async def async_update(self) -> None:
         """Update state of device."""
         power_state = await self._projector.get_power()
         _LOGGER.debug("Projector status: %s", power_state)
@@ -139,7 +133,10 @@ class EpsonProjectorMediaPlayer(MediaPlayerEntity):
             self._source = SOURCE_LIST.get(source, self._source)
             volume = await self._projector.get_property(VOLUME)
             if volume:
-                self._volume = volume
+                try:
+                    self._volume = float(volume)
+                except ValueError:
+                    self._volume = None
         elif power_state == BUSY:
             self._state = STATE_ON
         else:
@@ -178,20 +175,17 @@ class EpsonProjectorMediaPlayer(MediaPlayerEntity):
         """Return if projector is available."""
         return self._available
 
-    @property
-    def supported_features(self):
-        """Flag media player features that are supported."""
-        return SUPPORT_EPSON
-
-    async def async_turn_on(self):
+    async def async_turn_on(self) -> None:
         """Turn on epson."""
         if self._state == STATE_OFF:
             await self._projector.send_command(TURN_ON)
+            self._state = STATE_ON
 
-    async def async_turn_off(self):
+    async def async_turn_off(self) -> None:
         """Turn off epson."""
         if self._state == STATE_ON:
             await self._projector.send_command(TURN_OFF)
+            self._state = STATE_OFF
 
     @property
     def source_list(self):
@@ -212,36 +206,36 @@ class EpsonProjectorMediaPlayer(MediaPlayerEntity):
         """Set color mode in Epson."""
         await self._projector.send_command(CMODE_LIST_SET[cmode])
 
-    async def async_select_source(self, source):
+    async def async_select_source(self, source: str) -> None:
         """Select input source."""
         selected_source = INV_SOURCES[source]
         await self._projector.send_command(selected_source)
 
-    async def async_mute_volume(self, mute):
+    async def async_mute_volume(self, mute: bool) -> None:
         """Mute (true) or unmute (false) sound."""
         await self._projector.send_command(MUTE)
 
-    async def async_volume_up(self):
+    async def async_volume_up(self) -> None:
         """Increase volume."""
         await self._projector.send_command(VOL_UP)
 
-    async def async_volume_down(self):
+    async def async_volume_down(self) -> None:
         """Decrease volume."""
         await self._projector.send_command(VOL_DOWN)
 
-    async def async_media_play(self):
+    async def async_media_play(self) -> None:
         """Play media via Epson."""
         await self._projector.send_command(PLAY)
 
-    async def async_media_pause(self):
+    async def async_media_pause(self) -> None:
         """Pause media via Epson."""
         await self._projector.send_command(PAUSE)
 
-    async def async_media_next_track(self):
+    async def async_media_next_track(self) -> None:
         """Skip to next."""
         await self._projector.send_command(FAST)
 
-    async def async_media_previous_track(self):
+    async def async_media_previous_track(self) -> None:
         """Skip to previous."""
         await self._projector.send_command(BACK)
 

@@ -1,12 +1,13 @@
 """The USB Discovery integration."""
 from __future__ import annotations
 
+from collections.abc import Coroutine, Mapping
 import dataclasses
 import fnmatch
 import logging
 import os
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from serial.tools.list_ports import comports
 from serial.tools.list_ports_common import ListPortInfo
@@ -20,13 +21,15 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.data_entry_flow import BaseServiceInfo
 from homeassistant.helpers import discovery_flow, system_info
 from homeassistant.helpers.debounce import Debouncer
-from homeassistant.helpers.frame import report
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_usb
 
 from .const import DOMAIN
 from .models import USBDevice
 from .utils import usb_device_from_port
+
+if TYPE_CHECKING:
+    from pyudev import Device
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,20 +46,6 @@ class UsbServiceInfo(BaseServiceInfo):
     serial_number: str | None
     manufacturer: str | None
     description: str | None
-
-    def __getitem__(self, name: str) -> Any:
-        """
-        Allow property access by name for compatibility reason.
-
-        Deprecated, and will be removed in version 2022.6.
-        """
-        report(
-            f"accessed discovery_info['{name}'] instead of discovery_info.{name}; "
-            "this will fail in version 2022.6",
-            exclude_integrations={DOMAIN},
-            error_if_core=False,
-        )
-        return getattr(self, name)
 
 
 def human_readable_device_name(
@@ -108,6 +97,27 @@ def _fnmatch_lower(name: str | None, pattern: str) -> bool:
     return fnmatch.fnmatch(name.lower(), pattern)
 
 
+def _is_matching(device: USBDevice, matcher: Mapping[str, str]) -> bool:
+    """Return True if a device matches."""
+    if "vid" in matcher and device.vid != matcher["vid"]:
+        return False
+    if "pid" in matcher and device.pid != matcher["pid"]:
+        return False
+    if "serial_number" in matcher and not _fnmatch_lower(
+        device.serial_number, matcher["serial_number"]
+    ):
+        return False
+    if "manufacturer" in matcher and not _fnmatch_lower(
+        device.manufacturer, matcher["manufacturer"]
+    ):
+        return False
+    if "description" in matcher and not _fnmatch_lower(
+        device.description, matcher["description"]
+    ):
+        return False
+    return True
+
+
 class USBDiscovery:
     """Manage USB Discovery."""
 
@@ -121,7 +131,7 @@ class USBDiscovery:
         self.usb = usb
         self.seen: set[tuple[str, ...]] = set()
         self.observer_active = False
-        self._request_debouncer: Debouncer | None = None
+        self._request_debouncer: Debouncer[Coroutine[Any, Any, None]] | None = None
 
     async def async_setup(self) -> None:
         """Set up USB Discovery."""
@@ -163,12 +173,14 @@ class USBDiscovery:
             monitor, callback=self._device_discovered, name="usb-observer"
         )
         observer.start()
-        self.hass.bus.async_listen_once(
-            EVENT_HOMEASSISTANT_STOP, lambda event: observer.stop()
-        )
+
+        def _stop_observer(event: Event) -> None:
+            observer.stop()
+
+        self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _stop_observer)
         self.observer_active = True
 
-    def _device_discovered(self, device):
+    def _device_discovered(self, device: Device) -> None:
         """Call when the observer discovers a new usb tty device."""
         if device.action != "add":
             return
@@ -188,23 +200,8 @@ class USBDiscovery:
         self.seen.add(device_tuple)
         matched = []
         for matcher in self.usb:
-            if "vid" in matcher and device.vid != matcher["vid"]:
-                continue
-            if "pid" in matcher and device.pid != matcher["pid"]:
-                continue
-            if "serial_number" in matcher and not _fnmatch_lower(
-                device.serial_number, matcher["serial_number"]
-            ):
-                continue
-            if "manufacturer" in matcher and not _fnmatch_lower(
-                device.manufacturer, matcher["manufacturer"]
-            ):
-                continue
-            if "description" in matcher and not _fnmatch_lower(
-                device.description, matcher["description"]
-            ):
-                continue
-            matched.append(matcher)
+            if _is_matching(device, matcher):
+                matched.append(matcher)
 
         if not matched:
             return
@@ -274,3 +271,14 @@ async def websocket_usb_scan(
     if not usb_discovery.observer_active:
         await usb_discovery.async_request_scan_serial()
     connection.send_result(msg["id"])
+
+
+@callback
+def async_is_plugged_in(hass: HomeAssistant, matcher: Mapping) -> bool:
+    """Return True is a USB device is present."""
+    usb_discovery: USBDiscovery = hass.data[DOMAIN]
+    for device_tuple in usb_discovery.seen:
+        device = USBDevice(*device_tuple)
+        if _is_matching(device, matcher):
+            return True
+    return False

@@ -20,6 +20,8 @@ from homeassistant.components.lutron_caseta.const import (
 )
 from homeassistant.const import CONF_HOST
 
+from . import ENTRY_MOCK_DATA, MockBridge
+
 from tests.common import MockConfigEntry
 
 ATTR_HOSTNAME = "hostname"
@@ -37,28 +39,6 @@ MOCK_ASYNC_PAIR_SUCCESS = {
     PAIR_CERT: "mock_cert",
     PAIR_CA: "mock_ca",
 }
-
-
-class MockBridge:
-    """Mock Lutron bridge that emulates configured connected status."""
-
-    def __init__(self, can_connect=True):
-        """Initialize MockBridge instance with configured mock connectivity."""
-        self.can_connect = can_connect
-        self.is_currently_connected = False
-
-    async def connect(self):
-        """Connect the mock bridge."""
-        if self.can_connect:
-            self.is_currently_connected = True
-
-    def is_connected(self):
-        """Return whether the mock bridge is connected."""
-        return self.is_currently_connected
-
-    async def close(self):
-        """Close the mock bridge connection."""
-        self.is_currently_connected = False
 
 
 async def test_bridge_import_flow(hass):
@@ -90,6 +70,8 @@ async def test_bridge_import_flow(hass):
     assert result["type"] == "create_entry"
     assert result["title"] == CasetaConfigFlow.ENTRY_DEFAULT_TITLE
     assert result["data"] == entry_mock_data
+    assert result["result"].unique_id == "000004d2"
+
     await hass.async_block_till_done()
     assert len(mock_setup_entry.mock_calls) == 1
 
@@ -119,7 +101,7 @@ async def test_bridge_cannot_connect(hass):
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] == data_entry_flow.RESULT_TYPE_ABORT
+    assert result["type"] == data_entry_flow.FlowResultType.ABORT
     assert result["reason"] == CasetaConfigFlow.ABORT_REASON_CANNOT_CONNECT
 
 
@@ -142,7 +124,7 @@ async def test_bridge_cannot_connect_unknown_error(hass):
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] == data_entry_flow.RESULT_TYPE_ABORT
+    assert result["type"] == data_entry_flow.FlowResultType.ABORT
     assert result["reason"] == CasetaConfigFlow.ABORT_REASON_CANNOT_CONNECT
 
 
@@ -162,20 +144,14 @@ async def test_bridge_invalid_ssl_error(hass):
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] == data_entry_flow.RESULT_TYPE_ABORT
+    assert result["type"] == data_entry_flow.FlowResultType.ABORT
     assert result["reason"] == CasetaConfigFlow.ABORT_REASON_CANNOT_CONNECT
 
 
 async def test_duplicate_bridge_import(hass):
     """Test that creating a bridge entry with a duplicate host errors."""
 
-    entry_mock_data = {
-        CONF_HOST: "1.1.1.1",
-        CONF_KEYFILE: "",
-        CONF_CERTFILE: "",
-        CONF_CA_CERTS: "",
-    }
-    mock_entry = MockConfigEntry(domain=DOMAIN, data=entry_mock_data)
+    mock_entry = MockConfigEntry(domain=DOMAIN, data=ENTRY_MOCK_DATA)
     mock_entry.add_to_hass(hass)
 
     with patch(
@@ -186,10 +162,10 @@ async def test_duplicate_bridge_import(hass):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={"source": config_entries.SOURCE_IMPORT},
-            data=entry_mock_data,
+            data=ENTRY_MOCK_DATA,
         )
 
-    assert result["type"] == data_entry_flow.RESULT_TYPE_ABORT
+    assert result["type"] == data_entry_flow.FlowResultType.ABORT
     assert result["reason"] == "already_configured"
     assert len(mock_setup_entry.mock_calls) == 0
 
@@ -427,6 +403,7 @@ async def test_zeroconf_host_already_configured(hass, tmpdir):
         context={"source": config_entries.SOURCE_ZEROCONF},
         data=zeroconf.ZeroconfServiceInfo(
             host="1.1.1.1",
+            addresses=["1.1.1.1"],
             hostname="LuTrOn-abc.local.",
             name="mock_name",
             port=None,
@@ -454,6 +431,7 @@ async def test_zeroconf_lutron_id_already_configured(hass):
         context={"source": config_entries.SOURCE_ZEROCONF},
         data=zeroconf.ZeroconfServiceInfo(
             host="1.1.1.1",
+            addresses=["1.1.1.1"],
             hostname="LuTrOn-abc.local.",
             name="mock_name",
             port=None,
@@ -476,6 +454,7 @@ async def test_zeroconf_not_lutron_device(hass):
         context={"source": config_entries.SOURCE_ZEROCONF},
         data=zeroconf.ZeroconfServiceInfo(
             host="1.1.1.1",
+            addresses=["1.1.1.1"],
             hostname="notlutron-abc.local.",
             name="mock_name",
             port=None,
@@ -504,6 +483,7 @@ async def test_zeroconf(hass, source, tmpdir):
         context={"source": source},
         data=zeroconf.ZeroconfServiceInfo(
             host="1.1.1.1",
+            addresses=["1.1.1.1"],
             hostname="LuTrOn-abc.local.",
             name="mock_name",
             port=None,

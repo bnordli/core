@@ -1,6 +1,6 @@
 """Constant definitions for UniFi Protect Integration."""
 
-from pyunifiprotect.data.types import ModelType, Version
+from pyunifiprotect.data import ModelType, Version
 
 from homeassistant.const import Platform
 
@@ -19,6 +19,7 @@ ATTR_ANONYMIZE = "anonymize"
 CONF_DISABLE_RTSP = "disable_rtsp"
 CONF_ALL_UPDATES = "all_updates"
 CONF_OVERRIDE_CHOST = "override_connection_host"
+CONF_MAX_MEDIA = "max_media"
 
 CONFIG_OPTIONS = [
     CONF_ALL_UPDATES,
@@ -31,12 +32,15 @@ DEFAULT_ATTRIBUTION = "Powered by UniFi Protect Server"
 DEFAULT_BRAND = "Ubiquiti"
 DEFAULT_SCAN_INTERVAL = 5
 DEFAULT_VERIFY_SSL = False
+DEFAULT_MAX_MEDIA = 1000
 
 DEVICES_THAT_ADOPT = {
     ModelType.CAMERA,
     ModelType.LIGHT,
     ModelType.VIEWPORT,
     ModelType.SENSOR,
+    ModelType.DOORLOCK,
+    ModelType.CHIME,
 }
 DEVICES_WITH_ENTITIES = DEVICES_THAT_ADOPT | {ModelType.NVR}
 DEVICES_FOR_SUBSCRIBE = DEVICES_WITH_ENTITIES | {ModelType.EVENT}
@@ -51,9 +55,13 @@ PLATFORMS = [
     Platform.BUTTON,
     Platform.CAMERA,
     Platform.LIGHT,
+    Platform.LOCK,
     Platform.MEDIA_PLAYER,
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
 ]
+
+DISPATCH_ADOPT = "adopt_device"
+DISPATCH_CHANNELS = "new_camera_channels"

@@ -196,19 +196,23 @@ async def test_on_node_added_not_ready(
     assert len(hass.states.async_all()) == 0
     assert not dev_reg.devices
 
+    node_state = deepcopy(zp3111_not_ready_state)
+    node_state["isSecure"] = False
+
     event = Event(
         type="node added",
         data={
             "source": "controller",
             "event": "node added",
-            "node": deepcopy(zp3111_not_ready_state),
+            "node": node_state,
+            "result": {},
         },
     )
     client.driver.receive_event(event)
     await hass.async_block_till_done()
 
-    # the only entity is the node status sensor
-    assert len(hass.states.async_all()) == 1
+    # the only entities are the node status sensor and ping button
+    assert len(hass.states.async_all()) == 2
 
     device = dev_reg.async_get_device(identifiers={(DOMAIN, device_id)})
     assert device
@@ -250,8 +254,8 @@ async def test_existing_node_not_ready(hass, zp3111_not_ready, client, integrati
     assert not device.model
     assert not device.sw_version
 
-    # the only entity is the node status sensor
-    assert len(hass.states.async_all()) == 1
+    # the only entities are the node status sensor and ping button
+    assert len(hass.states.async_all()) == 2
 
     device = dev_reg.async_get_device(identifiers={(DOMAIN, device_id)})
     assert device
@@ -317,12 +321,16 @@ async def test_existing_node_not_replaced_when_not_ready(
     assert state.name == "Custom Entity Name"
     assert not hass.states.get(motion_entity)
 
+    node_state = deepcopy(zp3111_not_ready_state)
+    node_state["isSecure"] = False
+
     event = Event(
         type="node added",
         data={
             "source": "controller",
             "event": "node added",
-            "node": deepcopy(zp3111_not_ready_state),
+            "node": node_state,
+            "result": {},
         },
     )
     client.driver.receive_event(event)
@@ -424,10 +432,14 @@ async def test_start_addon(
 
 
 async def test_install_addon(
-    hass, addon_installed, install_addon, addon_options, set_addon_options, start_addon
+    hass,
+    addon_not_installed,
+    install_addon,
+    addon_options,
+    set_addon_options,
+    start_addon,
 ):
     """Test install and start the Z-Wave JS add-on during entry setup."""
-    addon_installed.return_value["version"] = None
     device = "/test"
     s0_legacy_key = "s0_legacy"
     s2_access_control_key = "s2_access_control"
@@ -575,10 +587,10 @@ async def test_addon_options_changed(
     "addon_version, update_available, update_calls, backup_calls, "
     "update_addon_side_effect, create_backup_side_effect",
     [
-        ("1.0", True, 1, 1, None, None),
-        ("1.0", False, 0, 0, None, None),
-        ("1.0", True, 1, 1, HassioAPIError("Boom"), None),
-        ("1.0", True, 0, 1, None, HassioAPIError("Boom")),
+        ("1.0.0", True, 1, 1, None, None),
+        ("1.0.0", False, 0, 0, None, None),
+        ("1.0.0", True, 1, 1, HassioAPIError("Boom"), None),
+        ("1.0.0", True, 0, 1, None, HassioAPIError("Boom")),
     ],
 )
 async def test_update_addon(
@@ -712,7 +724,7 @@ async def test_remove_entry(
     assert create_backup.call_count == 1
     assert create_backup.call_args == call(
         hass,
-        {"name": "addon_core_zwave_js_1.0", "addons": ["core_zwave_js"]},
+        {"name": "addon_core_zwave_js_1.0.0", "addons": ["core_zwave_js"]},
         partial=True,
     )
     assert uninstall_addon.call_count == 1
@@ -754,7 +766,7 @@ async def test_remove_entry(
     assert create_backup.call_count == 1
     assert create_backup.call_args == call(
         hass,
-        {"name": "addon_core_zwave_js_1.0", "addons": ["core_zwave_js"]},
+        {"name": "addon_core_zwave_js_1.0.0", "addons": ["core_zwave_js"]},
         partial=True,
     )
     assert uninstall_addon.call_count == 0
@@ -778,7 +790,7 @@ async def test_remove_entry(
     assert create_backup.call_count == 1
     assert create_backup.call_args == call(
         hass,
-        {"name": "addon_core_zwave_js_1.0", "addons": ["core_zwave_js"]},
+        {"name": "addon_core_zwave_js_1.0.0", "addons": ["core_zwave_js"]},
         partial=True,
     )
     assert uninstall_addon.call_count == 1
@@ -788,12 +800,14 @@ async def test_remove_entry(
     assert "Failed to uninstall the Z-Wave JS add-on" in caplog.text
 
 
-async def test_removed_device(hass, client, multiple_devices, integration):
+async def test_removed_device(
+    hass, client, climate_radio_thermostat_ct100_plus, lock_schlage_be469, integration
+):
     """Test that the device registry gets updated when a device gets removed."""
-    nodes = multiple_devices
-
+    driver = client.driver
+    assert driver
     # Verify how many nodes are available
-    assert len(client.driver.controller.nodes) == 2
+    assert len(driver.controller.nodes) == 2
 
     # Make sure there are the same number of devices
     dev_reg = dr.async_get(hass)
@@ -803,10 +817,10 @@ async def test_removed_device(hass, client, multiple_devices, integration):
     # Check how many entities there are
     ent_reg = er.async_get(hass)
     entity_entries = er.async_entries_for_config_entry(ent_reg, integration.entry_id)
-    assert len(entity_entries) == 26
+    assert len(entity_entries) == 29
 
     # Remove a node and reload the entry
-    old_node = nodes.pop(13)
+    old_node = driver.controller.nodes.pop(13)
     await hass.config_entries.async_reload(integration.entry_id)
     await hass.async_block_till_done()
 
@@ -815,8 +829,8 @@ async def test_removed_device(hass, client, multiple_devices, integration):
     device_entries = dr.async_entries_for_config_entry(dev_reg, integration.entry_id)
     assert len(device_entries) == 1
     entity_entries = er.async_entries_for_config_entry(ent_reg, integration.entry_id)
-    assert len(entity_entries) == 16
-    assert dev_reg.async_get_device({get_device_id(client, old_node)}) is None
+    assert len(entity_entries) == 17
+    assert dev_reg.async_get_device({get_device_id(driver, old_node)}) is None
 
 
 async def test_suggested_area(hass, client, eaton_rf9640_dimmer):
@@ -838,9 +852,14 @@ async def test_node_removed(hass, multisensor_6_state, client, integration):
     dev_reg = dr.async_get(hass)
     node = Node(client, deepcopy(multisensor_6_state))
     device_id = f"{client.driver.controller.home_id}-{node.node_id}"
-    event = {"node": node}
+    event = {
+        "source": "controller",
+        "event": "node added",
+        "node": node.data,
+        "result": {},
+    }
 
-    client.driver.controller.emit("node added", event)
+    client.driver.controller.receive_event(Event("node added", event))
     await hass.async_block_till_done()
     old_device = dev_reg.async_get_device(identifiers={(DOMAIN, device_id)})
     assert old_device.id
@@ -907,7 +926,7 @@ async def test_replace_same_node(
                 "index": 0,
                 "status": 4,
                 "ready": False,
-                "isSecure": "unknown",
+                "isSecure": False,
                 "interviewAttempts": 1,
                 "endpoints": [{"nodeId": node_id, "index": 0, "deviceClass": None}],
                 "values": [],
@@ -921,7 +940,9 @@ async def test_replace_same_node(
                     "commandsDroppedTX": 0,
                     "timeoutResponse": 0,
                 },
+                "isControllerNode": False,
             },
+            "result": {},
         },
     )
 
@@ -1022,7 +1043,7 @@ async def test_replace_different_node(
                 "index": 0,
                 "status": 4,
                 "ready": False,
-                "isSecure": "unknown",
+                "isSecure": False,
                 "interviewAttempts": 1,
                 "endpoints": [
                     {"nodeId": multisensor_6.node_id, "index": 0, "deviceClass": None}
@@ -1038,7 +1059,9 @@ async def test_replace_different_node(
                     "commandsDroppedTX": 0,
                     "timeoutResponse": 0,
                 },
+                "isControllerNode": False,
             },
+            "result": {},
         },
     )
 

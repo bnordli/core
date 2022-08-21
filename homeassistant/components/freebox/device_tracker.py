@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from homeassistant.components.device_tracker import SOURCE_TYPE_ROUTER
+from homeassistant.components.device_tracker import SourceType
 from homeassistant.components.device_tracker.config_entry import ScannerEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -19,15 +19,15 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up device tracker for Freebox component."""
-    router = hass.data[DOMAIN][entry.unique_id]
-    tracked = set()
+    router: FreeboxRouter = hass.data[DOMAIN][entry.unique_id]
+    tracked: set[str] = set()
 
     @callback
-    def update_router():
+    def update_router() -> None:
         """Update the values of the router."""
         add_entities(router, async_add_entities, tracked)
 
-    router.listeners.append(
+    entry.async_on_unload(
         async_dispatcher_connect(hass, router.signal_device_new, update_router)
     )
 
@@ -35,7 +35,9 @@ async def async_setup_entry(
 
 
 @callback
-def add_entities(router, async_add_entities, tracked):
+def add_entities(
+    router: FreeboxRouter, async_add_entities: AddEntitiesCallback, tracked: set[str]
+) -> None:
     """Add new tracker entities from the router."""
     new_tracked = []
 
@@ -61,7 +63,7 @@ class FreeboxDevice(ScannerEntity):
         self._manufacturer = device["vendor_name"]
         self._icon = icon_for_freebox_device(device)
         self._active = False
-        self._attrs = {}
+        self._attrs: dict[str, Any] = {}
 
     @callback
     def async_update_state(self) -> None:
@@ -96,9 +98,9 @@ class FreeboxDevice(ScannerEntity):
         return self._active
 
     @property
-    def source_type(self) -> str:
+    def source_type(self) -> SourceType:
         """Return the source type."""
-        return SOURCE_TYPE_ROUTER
+        return SourceType.ROUTER
 
     @property
     def icon(self) -> str:

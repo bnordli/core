@@ -1,7 +1,11 @@
 """Mocks for the august component."""
+from __future__ import annotations
+
+from collections.abc import Iterable
 import json
 import os
 import time
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 from yalexs.activity import (
@@ -26,7 +30,9 @@ from yalexs.lock import Lock, LockDetail
 from yalexs.pubnub_async import AugustPubNub
 
 from homeassistant.components.august.const import CONF_LOGIN_METHOD, DOMAIN
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.core import HomeAssistant
 
 from tests.common import MockConfigEntry, load_fixture
 
@@ -75,7 +81,20 @@ async def _mock_setup_august(
     return entry
 
 
-async def _create_august_with_devices(  # noqa: C901
+async def _create_august_with_devices(
+    hass: HomeAssistant,
+    devices: Iterable[LockDetail | DoorbellDetail],
+    api_call_side_effects: dict[str, Any] | None = None,
+    activities: list[Any] | None = None,
+    pubnub: AugustPubNub | None = None,
+) -> ConfigEntry:
+    entry, _ = await _create_august_api_with_devices(
+        hass, devices, api_call_side_effects, activities, pubnub
+    )
+    return entry
+
+
+async def _create_august_api_with_devices(  # noqa: C901
     hass, devices, api_call_side_effects=None, activities=None, pubnub=None
 ):
     if api_call_side_effects is None:
@@ -171,7 +190,7 @@ async def _create_august_with_devices(  # noqa: C901
         # are any locks
         assert api_instance.async_status_async.mock_calls
 
-    return entry
+    return entry, api_instance
 
 
 async def _mock_setup_august_with_api_side_effects(hass, api_call_side_effects, pubnub):
@@ -281,6 +300,10 @@ def _mock_august_lock_data(lockid="mocklockid1", houseid="mockhouseid1"):
 
 async def _mock_operative_august_lock_detail(hass):
     return await _mock_lock_from_fixture(hass, "get_lock.online.json")
+
+
+async def _mock_lock_with_offline_key(hass):
+    return await _mock_lock_from_fixture(hass, "get_lock.online_with_keys.json")
 
 
 async def _mock_inoperative_august_lock_detail(hass):
